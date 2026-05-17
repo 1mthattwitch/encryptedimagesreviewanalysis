@@ -9,14 +9,14 @@ echo    Media Organizer  --  Gallery Vault File Processor
 echo  ============================================================
 echo.
 
-:: ── Step 1: Check Python ────────────────────────────────────────────────────
-echo [1/4] Checking Python...
+:: ── Step 1: Check Python ─────────────────────────────────────────────────
+echo [1/5] Checking Python...
 python --version >nul 2>&1
 if !errorlevel! neq 0 (
     echo.
     echo  ERROR: Python is not installed or not on PATH.
     echo  Download it from https://www.python.org/downloads/
-    echo  (Make sure to tick "Add Python to PATH" during install)
+    echo  Make sure to tick "Add Python to PATH" during install.
     echo.
     pause
     exit /b 1
@@ -24,8 +24,29 @@ if !errorlevel! neq 0 (
 python --version
 echo.
 
-:: ── Step 2: Auto-update from GitHub ─────────────────────────────────────────
-echo [2/4] Checking for updates...
+:: ── Step 2: Create venv if it doesn't exist ──────────────────────────────
+echo [2/5] Setting up virtual environment...
+if not exist ".venv\Scripts\activate.bat" (
+    echo   Creating .venv for the first time...
+    python -m venv .venv
+    if !errorlevel! neq 0 (
+        echo.
+        echo  ERROR: Failed to create virtual environment.
+        echo  Try: python -m pip install --upgrade pip
+        echo.
+        pause
+        exit /b 1
+    )
+    echo   .venv created.
+) else (
+    echo   .venv already exists -- skipping creation.
+)
+call .venv\Scripts\activate.bat
+echo   Virtual environment active.
+echo.
+
+:: ── Step 3: Auto-update source files from GitHub ─────────────────────────
+echo [3/5] Checking for updates...
 (
 echo import urllib.request, os, sys
 echo BRANCH = "claude/decrypt-gallery-vault-POpHP"
@@ -61,9 +82,9 @@ python _update.py
 del _update.py
 echo.
 
-:: ── Step 3: Install dependencies ────────────────────────────────────────────
-echo [3/4] Installing / checking dependencies...
-pip install --quiet --exists-action i Pillow PyMuPDF python-docx imagehash opencv-python-headless numpy requests odfpy
+:: ── Step 4: Install dependencies into venv ───────────────────────────────
+echo [4/5] Installing / updating dependencies into venv...
+pip install --quiet --exists-action i -r requirements.txt
 if !errorlevel! neq 0 (
     echo.
     echo  WARNING: Some packages may have failed to install.
@@ -72,8 +93,8 @@ if !errorlevel! neq 0 (
 echo   done.
 echo.
 
-:: ── Step 4: Launch GUI ──────────────────────────────────────────────────────
-echo [4/4] Launching Media Organizer...
+:: ── Step 5: Launch GUI ───────────────────────────────────────────────────
+echo [5/5] Launching Media Organizer...
 echo.
 python -m mediaorganizer.gui
 
@@ -84,4 +105,6 @@ if !errorlevel! neq 0 (
 )
 
 echo.
+echo  Deactivating virtual environment...
+call .venv\Scripts\deactivate.bat 2>nul
 pause
