@@ -9,10 +9,9 @@ echo    Media Organizer  --  Gallery Vault File Processor
 echo  ============================================================
 echo.
 
-:: ── Step 1: Find Python ─────────────────────────────────────────────────
+:: --- Step 1: Find Python ------------------------------------------------
 echo [1/5] Finding Python...
 
-:: Try 'python' first, then 'py' (Windows Launcher), then common install paths
 set PYTHON=
 
 python --version >nul 2>&1
@@ -27,15 +26,17 @@ if !errorlevel! equ 0 (
     goto PYTHON_FOUND
 )
 
-:: Try common install locations
 for %%P in (
+    "%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
+    "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python39\python.exe"
+    "C:\Python314\python.exe"
+    "C:\Python313\python.exe"
     "C:\Python312\python.exe"
     "C:\Python311\python.exe"
-    "C:\Python310\python.exe"
     "%APPDATA%\Microsoft\WindowsApps\python.exe"
 ) do (
     if exist %%P (
@@ -45,26 +46,22 @@ for %%P in (
 )
 
 echo.
-echo  ERROR: Python could not be found.
+echo  ERROR: Python could not be found on PATH.
 echo.
-echo  You said you have Python -- it is probably just not on your PATH.
-echo  Fix: open Python installer again and tick "Add Python to PATH", OR
-echo       search Windows for "Python" and note the install folder, then
-echo       add it to System Environment Variables ^> PATH.
-echo.
-echo  Quick check: open a new Command Prompt and type:  python --version
-echo  If that shows a version, close this window and run run.bat again.
-echo  If not, try:  py --version
+echo  You have Python installed -- it just needs to be on PATH.
+echo  Easiest fix: open a terminal and run:  py --version
+echo  If that works, close this window and run run.bat again.
+echo  (It will use 'py' automatically.)
 echo.
 pause
 exit /b 1
 
 :PYTHON_FOUND
 "%PYTHON%" --version
-echo   Found as: %PYTHON%
+echo   Using: %PYTHON%
 echo.
 
-:: ── Step 2: Create venv ─────────────────────────────────────────────────
+:: --- Step 2: Create venv ------------------------------------------------
 echo [2/5] Setting up virtual environment...
 if not exist ".venv\Scripts\activate.bat" (
     echo   Creating .venv for the first time...
@@ -72,8 +69,6 @@ if not exist ".venv\Scripts\activate.bat" (
     if !errorlevel! neq 0 (
         echo.
         echo  ERROR: Failed to create virtual environment.
-        echo  Try running this in a terminal:  %PYTHON% -m pip install --upgrade pip
-        echo.
         pause
         exit /b 1
     )
@@ -85,10 +80,10 @@ call .venv\Scripts\activate.bat
 echo   Virtual environment active.
 echo.
 
-:: ── Step 3: Auto-update from GitHub ─────────────────────────────────────────
+:: --- Step 3: Auto-update from GitHub ------------------------------------
 echo [3/5] Checking for updates...
 (
-echo import urllib.request, os, sys
+echo import urllib.request, os
 echo BRANCH = "claude/decrypt-gallery-vault-POpHP"
 echo BASE = "https://raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
 echo FILES = [
@@ -123,29 +118,26 @@ python _update.py
 del _update.py
 echo.
 
-:: ── Step 4: Install dependencies ───────────────────────────────────────────
+:: --- Step 4: Install dependencies ---------------------------------------
 echo [4/5] Installing / updating dependencies...
 pip install --quiet --exists-action i -r requirements.txt
 if !errorlevel! neq 0 (
-    echo.
-    echo  WARNING: Some packages may have failed. Tool may still work.
+    echo   WARNING: Some packages may have failed. Tool may still work.
 )
 echo   done.
 echo.
 
-:: ── Step 5: Launch GUI ─────────────────────────────────────────────────
+:: --- Step 5: Launch GUI -------------------------------------------------
 echo [5/5] Launching Media Organizer...
 echo.
 python -m mediaorganizer.gui
 
 if !errorlevel! neq 0 (
     echo.
-    echo  ERROR: The GUI failed to start.
-    echo  Common fix: pip install Pillow
-    echo  Or paste the error above into chat for help.
+    echo  ERROR: The GUI failed to start. See the error above.
+    echo  Paste the error into chat for help.
 )
 
 echo.
-echo  Deactivating virtual environment...
 call .venv\Scripts\deactivate.bat 2>nul
 pause
