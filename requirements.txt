@@ -1,0 +1,8 @@
+Pillow>=10.0
+PyMuPDF>=1.23
+python-docx>=1.1
+imagehash>=4.3
+opencv-python-headless>=4.8
+numpy>=1.24
+requests>=2.31
+odfpy>=1.4
