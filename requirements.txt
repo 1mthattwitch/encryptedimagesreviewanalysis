@@ -6,3 +6,5 @@ opencv-python-headless>=4.8
 numpy>=1.24
 requests>=2.31
 odfpy>=1.4
+pillow-heif>=0.13
+send2trash>=1.8

@@ -98,6 +98,9 @@ echo     "mediaorganizer/exporter.py",
 echo     "mediaorganizer/antivirus.py",
 echo     "mediaorganizer/cli.py",
 echo     "mediaorganizer/gui.py",
+echo     "mediaorganizer/dupe_finder.py",
+echo     "mediaorganizer/converter.py",
+echo     "mediaorganizer/ffmpeg_tools.py",
 echo     "requirements.txt",
 echo ]
 echo ok = 0
@@ -125,6 +128,32 @@ if !errorlevel! neq 0 (
     echo   WARNING: Some packages may have failed. Tool may still work.
 )
 echo   done.
+echo.
+
+:: --- ffmpeg check (optional, used by video tools) ----------------------
+set FFMPEG_FOUND=0
+for %%F in (
+    "C:\ffmpeg\ffmpeg-2026-01-14-git-6c878f8b82-full_build\ffmpeg-2026-01-14-git-6c878f8b82-full_build\bin\ffmpeg.exe"
+    "C:\ffmpeg\bin\ffmpeg.exe"
+    "C:\ffmpeg\ffmpeg.exe"
+    "C:\Program Files\ffmpeg\bin\ffmpeg.exe"
+) do (
+    if exist %%F (
+        echo   ffmpeg found: %%~F
+        set FFMPEG_FOUND=1
+    )
+)
+ffmpeg -version >nul 2>&1
+if !errorlevel! equ 0 (
+    if !FFMPEG_FOUND! equ 0 (
+        echo   ffmpeg found on PATH.
+        set FFMPEG_FOUND=1
+    )
+)
+if !FFMPEG_FOUND! equ 0 (
+    echo   ffmpeg not found -- video tools will be disabled.
+    echo   Free download: https://ffmpeg.org/
+)
 echo.
 
 :: --- Step 5: Launch GUI -------------------------------------------------

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import queue
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Optional
@@ -9,7 +11,7 @@ from typing import Optional
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-# ── Colour palette ───────────────────────────────────────────────────────────
+# -- Colour palette -------------------------------------------------------
 BG      = '#1a1a2e'
 CARD    = '#16213e'
 CARD2   = '#0f3460'
@@ -63,7 +65,7 @@ class App(tk.Tk):
         self.after(600, self._ping_ollama)
         self.after(800, self._ping_av)
 
-    # ── Styles ────────────────────────────────────────────────────────────────
+    # -- Styles -----------------------------------------------------------
 
     def _styles(self) -> None:
         s = ttk.Style(self)
@@ -102,7 +104,7 @@ class App(tk.Tk):
         s.map('TCombobox', fieldbackground=[('readonly', CARD)])
         s.configure('TScrollbar', background=CARD, troughcolor=BG, borderwidth=0)
 
-    # ── Layout ────────────────────────────────────────────────────────────────
+    # -- Layout -----------------------------------------------------------
 
     def _build(self) -> None:
         self._header()
@@ -116,12 +118,10 @@ class App(tk.Tk):
         h.pack_propagate(False)
         tk.Label(h, text='  \U0001f5c2  Media Organizer', bg=CARD, fg=ACCENT,
                  font=FONT_TITLE).pack(side='left', padx=10)
-        tk.Label(h, text='v1.1', bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left')
-        # AV status pill
+        tk.Label(h, text='v1.2', bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left')
         self._av_lbl = tk.Label(h, text='  ☠  AV: checking…  ',
                                 bg=CARD2, fg=MUTED, font=FONT_SMALL, padx=8, pady=4)
         self._av_lbl.pack(side='right', padx=4)
-        # Ollama status pill
         self._ollama_lbl = tk.Label(h, text='  ●  Ollama: checking…  ',
                                     bg=CARD2, fg=MUTED, font=FONT_SMALL, padx=8, pady=4)
         self._ollama_lbl.pack(side='right', padx=12)
@@ -196,6 +196,7 @@ class App(tk.Tk):
         self._tab_threats()
         self._tab_storage()
         self._tab_export()
+        self._tab_tools()
 
     def _tab_preview(self) -> None:
         f = ttk.Frame(self._nb)
@@ -217,8 +218,7 @@ class App(tk.Tk):
         self._info_meta.pack(fill='x')
         self._info_health = tk.Label(info, bg=CARD, fg=GREEN, font=FONT_SMALL, anchor='w')
         self._info_health.pack(fill='x')
-        self._info_av = tk.Label(info, bg=CARD, fg=GREEN, font=FONT_SMALL, anchor='w',
-                                 text='')
+        self._info_av = tk.Label(info, bg=CARD, fg=GREEN, font=FONT_SMALL, anchor='w', text='')
         self._info_av.pack(fill='x')
         ai_f = tk.Frame(f, bg=CARD, padx=12, pady=8)
         ai_f.pack(fill='x', padx=6, pady=2)
@@ -315,6 +315,125 @@ class App(tk.Tk):
         tk.Label(f, bg=BG, fg=MUTED, font=FONT_SMALL,
                  text='Run a scan first to populate export data.').pack(anchor='w', padx=8)
 
+    def _tab_tools(self) -> None:
+        f = ttk.Frame(self._nb)
+        self._nb.add(f, text='  \U0001f6e0  Tools  ')
+
+        canvas = tk.Canvas(f, bg=BG, highlightthickness=0)
+        vsb = ttk.Scrollbar(f, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
+        inner = tk.Frame(canvas, bg=BG)
+        win = canvas.create_window((0, 0), window=inner, anchor='nw')
+        inner.bind('<Configure>', lambda _e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width))
+
+        def section(title: str) -> tk.Frame:
+            h = tk.Frame(inner, bg=CARD2, padx=10, pady=6)
+            h.pack(fill='x', padx=8, pady=(12, 0))
+            tk.Label(h, text=title, bg=CARD2, fg=ACCENT, font=FONT_HEAD).pack(anchor='w')
+            c = tk.Frame(inner, bg=CARD, padx=14, pady=10)
+            c.pack(fill='x', padx=8, pady=(0, 2))
+            return c
+
+        # ---- Duplicate Finder -------------------------------------------
+        df = section('\U0001f50d  Advanced Duplicate Finder')
+        tk.Label(df, bg=CARD, fg=MUTED, font=FONT_SMALL, justify='left',
+                 text='Full-featured duplicate finder with visual comparison, SSIM scoring,\n'
+                      'animated card browser, and recycle-bin deletion. Opens as a new window.'
+                 ).pack(anchor='w', pady=(0, 8))
+        ttk.Button(df, text='Open Duplicate Finder', style='Accent.TButton',
+                   command=self._tools_open_dupe_finder).pack(anchor='w')
+
+        # ---- Image Tools ------------------------------------------------
+        img = section('\U0001f5bc  Image Tools')
+        tk.Label(img, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                 text='All image tools operate on the folder selected in the toolbar.'
+                 ).pack(anchor='w', pady=(0, 8))
+
+        # HEIC row
+        row = tk.Frame(img, bg=CARD); row.pack(fill='x', pady=3)
+        tk.Label(row, text='HEIC → JPG', bg=CARD, fg=TEXT, font=FONT_BODY,
+                 width=20, anchor='w').pack(side='left')
+        tk.Label(row, text='Quality:', bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 3))
+        self._heic_quality = tk.IntVar(value=92)
+        ttk.Spinbox(row, from_=60, to=100, textvariable=self._heic_quality,
+                    width=5).pack(side='left', padx=(0, 8))
+        ttk.Button(row, text='Convert All HEIC', style='Flat.TButton',
+                   command=self._tools_heic_convert).pack(side='left')
+
+        # Rotation row
+        row = tk.Frame(img, bg=CARD); row.pack(fill='x', pady=3)
+        tk.Label(row, text='Fix EXIF Rotation', bg=CARD, fg=TEXT, font=FONT_BODY,
+                 width=20, anchor='w').pack(side='left')
+        tk.Label(row, text='Rotates pixels to match EXIF orientation tag, in-place.',
+                 bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 12))
+        ttk.Button(row, text='Fix Rotation', style='Flat.TButton',
+                   command=self._tools_fix_rotation).pack(side='left')
+
+        # GPS row
+        row = tk.Frame(img, bg=CARD); row.pack(fill='x', pady=3)
+        tk.Label(row, text='Strip GPS Data', bg=CARD, fg=TEXT, font=FONT_BODY,
+                 width=20, anchor='w').pack(side='left')
+        tk.Label(row, text='Removes GPS location metadata from all images.',
+                 bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 12))
+        ttk.Button(row, text='Strip GPS', style='Flat.TButton',
+                   command=self._tools_strip_gps).pack(side='left')
+
+        # Resize row
+        row = tk.Frame(img, bg=CARD); row.pack(fill='x', pady=3)
+        tk.Label(row, text='Batch Resize', bg=CARD, fg=TEXT, font=FONT_BODY,
+                 width=20, anchor='w').pack(side='left')
+        tk.Label(row, text='Max px:', bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 3))
+        self._resize_max = tk.IntVar(value=1920)
+        ttk.Spinbox(row, from_=480, to=8000, increment=160, textvariable=self._resize_max,
+                    width=6).pack(side='left', padx=(0, 8))
+        tk.Label(row, text='Quality:', bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 3))
+        self._resize_quality = tk.IntVar(value=88)
+        ttk.Spinbox(row, from_=60, to=100, textvariable=self._resize_quality,
+                    width=5).pack(side='left', padx=(0, 8))
+        ttk.Button(row, text='Resize Images', style='Flat.TButton',
+                   command=self._tools_batch_resize).pack(side='left')
+
+        # ---- Video Tools ------------------------------------------------
+        from . import ffmpeg_tools as ft
+        vid = section('\U0001f4f9  Video Tools  (requires ffmpeg)')
+        if ft.FFMPEG:
+            ff_text = f'ffmpeg: {ft.FFMPEG}'
+            ff_color = GREEN
+        else:
+            ff_text = 'ffmpeg not found — download free at https://ffmpeg.org/'
+            ff_color = RED
+        tk.Label(vid, text=ff_text, bg=CARD, fg=ff_color, font=FONT_SMALL,
+                 wraplength=520, justify='left').pack(anchor='w', pady=(0, 8))
+
+        vid_state = '!disabled' if ft.FFMPEG else 'disabled'
+
+        row = tk.Frame(vid, bg=CARD); row.pack(fill='x', pady=3)
+        tk.Label(row, text='Convert to MP4', bg=CARD, fg=TEXT, font=FONT_BODY,
+                 width=20, anchor='w').pack(side='left')
+        tk.Label(row, text='Converts MOV/AVI/WMV/MKV/etc to H.264 MP4.',
+                 bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 12))
+        btn = ttk.Button(row, text='Convert All to MP4', style='Flat.TButton',
+                         command=self._tools_convert_mp4)
+        btn.pack(side='left')
+        btn.state([vid_state])
+
+        row = tk.Frame(vid, bg=CARD); row.pack(fill='x', pady=3)
+        tk.Label(row, text='Compress Videos', bg=CARD, fg=TEXT, font=FONT_BODY,
+                 width=20, anchor='w').pack(side='left')
+        tk.Label(row, text='CRF:', bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 3))
+        self._crf = tk.IntVar(value=23)
+        ttk.Spinbox(row, from_=18, to=32, textvariable=self._crf,
+                    width=5).pack(side='left', padx=(0, 6))
+        tk.Label(row, text='(lower = better quality, larger file)',
+                 bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side='left', padx=(0, 12))
+        btn2 = ttk.Button(row, text='Compress Videos', style='Flat.TButton',
+                          command=self._tools_compress_video)
+        btn2.pack(side='left')
+        btn2.state([vid_state])
+
     def _statusbar(self) -> None:
         bar = tk.Frame(self, bg=CARD, pady=6)
         bar.pack(fill='x', side='bottom')
@@ -331,7 +450,7 @@ class App(tk.Tk):
         self._prog = ttk.Progressbar(bar, mode='determinate', length=200)
         self._prog.pack(side='right', padx=10)
 
-    # ── Status pings ───────────────────────────────────────────────────────────
+    # -- Status pings -----------------------------------------------------
 
     def _ping_ollama(self) -> None:
         def _check():
@@ -369,7 +488,7 @@ class App(tk.Tk):
                 self._av_lbl.config(text='  ☠  AV: not found  ', fg=MUTED)
         threading.Thread(target=lambda: _done(_check()), daemon=True).start()
 
-    # ── Actions ────────────────────────────────────────────────────────────────
+    # -- Actions ----------------------------------------------------------
 
     def _browse(self) -> None:
         d = filedialog.askdirectory(title='Select folder to scan')
@@ -379,6 +498,148 @@ class App(tk.Tk):
     def _do_cancel(self) -> None:
         self._cancel.set()
         self._status.set('Cancelling…')
+
+    def _get_tools_folder(self) -> Optional[Path]:
+        folder = self._folder_var.get().strip()
+        if not folder or folder.startswith('Select'):
+            messagebox.showwarning('No folder', 'Please select a folder in the toolbar first.')
+            return None
+        p = Path(folder)
+        if not p.is_dir():
+            messagebox.showerror('Not found', f'Folder not found:\n{p}')
+            return None
+        return p
+
+    # -- Tool actions -----------------------------------------------------
+
+    def _tools_open_dupe_finder(self) -> None:
+        try:
+            subprocess.Popen([sys.executable, '-m', 'mediaorganizer.dupe_finder'])
+        except Exception as exc:
+            messagebox.showerror('Error', f'Could not launch Duplicate Finder:\n{exc}')
+
+    def _tools_heic_convert(self) -> None:
+        folder = self._get_tools_folder()
+        if not folder:
+            return
+        from . import converter as cv
+        if not cv.HEIF_AVAILABLE:
+            messagebox.showerror('Missing dependency',
+                                 'pillow-heif is not installed.\n'
+                                 'Re-run run.bat to install it automatically.')
+            return
+        quality = self._heic_quality.get()
+        def _run():
+            self._q.put(('status', 'Converting HEIC files…'))
+            try:
+                results = cv.batch_heic_to_jpg(
+                    folder, quality=quality,
+                    progress=lambda i, n, nm: self._q.put(('status', f'HEIC {i+1}/{n}: {nm}')))
+                self._q.put(('status', f'HEIC → JPG: {len(results)} file(s) converted.'))
+            except Exception as exc:
+                self._q.put(('status', f'HEIC error: {exc}'))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _tools_fix_rotation(self) -> None:
+        folder = self._get_tools_folder()
+        if not folder:
+            return
+        from . import converter as cv
+        _EXTS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.bmp'}
+        def _run():
+            paths = [p for p in folder.rglob('*') if p.suffix.lower() in _EXTS]
+            self._q.put(('status', f'Fixing rotation for {len(paths)} images…'))
+            ok = 0
+            for i, p in enumerate(paths):
+                try:
+                    cv.fix_exif_rotation(p)
+                    ok += 1
+                except Exception:
+                    pass
+                if (i + 1) % 20 == 0:
+                    self._q.put(('status', f'Fixing rotation {i+1}/{len(paths)}…'))
+            self._q.put(('status', f'Rotation fix complete: {ok}/{len(paths)} images.'))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _tools_strip_gps(self) -> None:
+        folder = self._get_tools_folder()
+        if not folder:
+            return
+        if not messagebox.askyesno('Strip GPS',
+                                   'Remove GPS metadata from all images in the selected folder?\n'
+                                   'This modifies files in-place.'):
+            return
+        from . import converter as cv
+        _EXTS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.bmp'}
+        def _run():
+            paths = [p for p in folder.rglob('*') if p.suffix.lower() in _EXTS]
+            self._q.put(('status', f'Stripping GPS from {len(paths)} images…'))
+            ok = 0
+            for p in paths:
+                try:
+                    cv.strip_gps(p)
+                    ok += 1
+                except Exception:
+                    pass
+            self._q.put(('status', f'GPS strip complete: {ok}/{len(paths)} images.'))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _tools_batch_resize(self) -> None:
+        folder = self._get_tools_folder()
+        if not folder:
+            return
+        max_px = self._resize_max.get()
+        quality = self._resize_quality.get()
+        if not messagebox.askyesno('Batch Resize',
+                                   f'Resize all images with longest side > {max_px}px to max {max_px}px?\n'
+                                   'This modifies files in-place.'):
+            return
+        from . import converter as cv
+        def _run():
+            self._q.put(('status', 'Batch resizing images…'))
+            try:
+                modified = cv.batch_resize(
+                    folder, max_dimension=max_px, quality=quality,
+                    progress=lambda i, n, nm: self._q.put(('status', f'Resize {i+1}/{n}: {nm}')))
+                self._q.put(('status', f'Resize complete: {len(modified)} image(s) resized.'))
+            except Exception as exc:
+                self._q.put(('status', f'Resize error: {exc}'))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _tools_convert_mp4(self) -> None:
+        folder = self._get_tools_folder()
+        if not folder:
+            return
+        def _run():
+            from . import ffmpeg_tools as ft
+            self._q.put(('status', 'Converting videos to MP4…'))
+            try:
+                results = ft.batch_convert_to_mp4(
+                    folder,
+                    progress=lambda i, n, nm: self._q.put(('status', f'Converting {i+1}/{n}: {nm}')))
+                self._q.put(('status', f'MP4 conversion complete: {len(results)} file(s) converted.'))
+            except Exception as exc:
+                self._q.put(('status', f'Conversion error: {exc}'))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _tools_compress_video(self) -> None:
+        folder = self._get_tools_folder()
+        if not folder:
+            return
+        crf = self._crf.get()
+        def _run():
+            from . import ffmpeg_tools as ft
+            self._q.put(('status', f'Compressing videos (CRF={crf})…'))
+            try:
+                results = ft.batch_compress_videos(
+                    folder, crf=crf,
+                    progress=lambda i, n, nm: self._q.put(('status', f'Compressing {i+1}/{n}: {nm}')))
+                self._q.put(('status', f'Compression complete: {len(results)} video(s) processed.'))
+            except Exception as exc:
+                self._q.put(('status', f'Compression error: {exc}'))
+        threading.Thread(target=_run, daemon=True).start()
+
+    # -- Scan workers -----------------------------------------------------
 
     def _start_scan(self) -> None:
         folder = self._folder_var.get().strip()
@@ -419,8 +680,6 @@ class App(tk.Tk):
         self._cancel_btn.state(['!disabled'])
         self._cancel.clear()
         threading.Thread(target=self._av_worker, args=(engine,), daemon=True).start()
-
-    # ── Background workers ────────────────────────────────────────────────────────
 
     def _worker(self, path: Path, recursive: bool, mode: str) -> None:
         from . import scanner as sc, health as hl, duplicates as dp, analyzer as az
@@ -469,7 +728,6 @@ class App(tk.Tk):
 
     def _av_worker(self, engine: str) -> None:
         from . import antivirus as av
-        total = len(self._entries)
 
         def prog(i, n, name):
             self._q.put(('prog', i, n))
@@ -478,13 +736,12 @@ class App(tk.Tk):
         self._q.put(('status', f'☠ Starting virus scan with {engine}…'))
         summary = av.scan_entries(self._entries, engine=engine,
                                   progress_cb=prog, cancel_flag=self._cancel)
-        # Update tree rows for any threats
         for e in self._entries:
             if not e.metadata.get('av_clean', True):
                 self._q.put(('upd', e))
         self._q.put(('av_done', summary))
 
-    # ── Queue handler ─────────────────────────────────────────────────────────────
+    # -- Queue handler ----------------------------------------------------
 
     def _poll(self) -> None:
         try:
@@ -537,7 +794,7 @@ class App(tk.Tk):
             self._scan_btn.state(['!disabled'])
             self._cancel_btn.state(['disabled'])
 
-    # ── Tree helpers ───────────────────────────────────────────────────────────
+    # -- Tree helpers -----------------------------------------------------
 
     def _row_tag(self, e) -> str:
         if not e.metadata.get('av_clean', True):
@@ -580,7 +837,7 @@ class App(tk.Tk):
         except Exception:
             pass
 
-    # ── Preview ────────────────────────────────────────────────────────────────
+    # -- Preview ----------------------------------------------------------
 
     def _on_select(self, _=None) -> None:
         sel = self._tree.selection()
@@ -616,7 +873,6 @@ class App(tk.Tk):
             self._info_health.config(text='✓  Healthy', fg=GREEN)
         else:
             self._info_health.config(text='✕  ' + '; '.join(e.health_issues), fg=RED)
-        # AV result
         if 'av_clean' in e.metadata:
             if e.metadata['av_clean']:
                 self._info_av.config(text=f"☠  Clean ({e.metadata['av_engine']})", fg=GREEN)
@@ -675,7 +931,7 @@ class App(tk.Tk):
             self._selected.ai_description = self._desc.get('1.0', 'end').strip()
             self._row_upd(self._selected)
 
-    # ── Tab refreshers ───────────────────────────────────────────────────────────
+    # -- Tab refreshers ---------------------------------------------------
 
     def _refresh_dups(self) -> None:
         self._dup_tree.delete(*self._dup_tree.get_children())
@@ -701,11 +957,9 @@ class App(tk.Tk):
         self._threat_engine_lbl.config(
             text=f'Engine: {engine}  |  Scanned: {scanned}  |  Threats: {threats}')
         if not summary.get('threat_files'):
-            self._threat_hdr.config(text='✓  All files scanned clean.', )
+            self._threat_hdr.config(text='✓  All files scanned clean.')
             return
-        self._threat_hdr.config(
-            text=f'☠  {threats} threat(s) found — do NOT open these files.',
-        )
+        self._threat_hdr.config(text=f'☠  {threats} threat(s) found — do NOT open these files.')
         for item in summary['threat_files']:
             p = Path(item['path'])
             self._threat_tree.insert('', 'end',
@@ -749,7 +1003,7 @@ class App(tk.Tk):
             c.create_text(x + bar_w // 2, y1 - 3, text=_human(info['size']),
                           fill=TEXT, font=('Segoe UI', 8), anchor='s')
 
-    # ── Apply / Export ──────────────────────────────────────────────────────────
+    # -- Apply / Export ---------------------------------------------------
 
     def _apply_all(self) -> None:
         if not self._entries:
