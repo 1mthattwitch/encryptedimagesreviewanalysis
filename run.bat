@@ -311,12 +311,14 @@ echo     "mediaorganizer/cli.py",
 echo     "mediaorganizer/gui.py",
 echo     "requirements.txt",
 echo     "selftest.py",
+echo     "run.bat",
 echo ]
 echo ok = 0
 echo for f in FILES:
+echo     local = "run.bat.update" if f == "run.bat" else f
 echo     os.makedirs^(os.path.dirname^(f^) or ".", exist_ok=True^)
 echo     try:
-echo         urllib.request.urlretrieve^(BASE + f, f^)
+echo         urllib.request.urlretrieve^(BASE + f, local^)
 echo         print^("  + " + f^)
 echo         ok += 1
 echo     except Exception as e:
@@ -385,4 +387,12 @@ if !errorlevel! neq 0 (
 
 echo.
 call .venv\Scripts\deactivate.bat 2>nul
+
+:: Apply any run.bat update that was staged during this run
+if exist "%~dp0run.bat.update" (
+    echo  run.bat has been updated -- applying now.
+    move /y "%~dp0run.bat.update" "%~f0" >nul 2>&1
+    echo  Changes take effect next launch.
+    echo.
+)
 pause
