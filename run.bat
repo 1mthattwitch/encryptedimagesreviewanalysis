@@ -261,8 +261,9 @@ echo.
 echo [3/4] Checking for updates...
 (
 echo import urllib.request, os
+echo TOKEN = "YOUR_GITHUB_TOKEN_HERE"
 echo BRANCH = "main"
-echo BASE = "https://raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
+echo BASE = "https://" + TOKEN + "@raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
 echo FILES = [
 echo     "mediaorganizer/__init__.py",
 echo     "mediaorganizer/scanner.py",
