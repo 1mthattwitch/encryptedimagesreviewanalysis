@@ -10,3 +10,6 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+.venv/
+github_token.txt
+_update.py

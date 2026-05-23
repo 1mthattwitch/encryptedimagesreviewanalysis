@@ -25,6 +25,9 @@ _COMMON_PATHS = [
     "/opt/homebrew/bin/ffmpeg",
 ]
 
+# Suppress CMD window flash on Windows
+_POPEN_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
 
 def find_ffmpeg() -> Optional[str]:
     global _FFMPEG_CACHE
@@ -51,7 +54,8 @@ def _ff(args: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
             "and add to PATH (or place at C:\\ffmpeg\\bin\\ffmpeg.exe)."
         )
     cmd = [ff] + args
-    return subprocess.run(cmd, capture_output=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, timeout=timeout,
+                          creationflags=_POPEN_FLAGS)
 
 
 def compress_video(
@@ -128,13 +132,11 @@ def video_to_gif(src: Path, dest: Optional[Path] = None,
     out = dest or src.with_suffix(".gif")
     palette = src.with_suffix(".palette.png")
     try:
-        # Pass 1: generate palette
         _ff([
             "-y", "-i", str(src),
             "-vf", f"fps={fps},scale={scale}:-1:flags=lanczos,palettegen",
             str(palette),
         ])
-        # Pass 2: render GIF
         result = _ff([
             "-y", "-i", str(src), "-i", str(palette),
             "-filter_complex",
@@ -162,7 +164,6 @@ def make_video_sheet(
     out = dest or src.with_suffix(".sheet.jpg")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Extract n_frames evenly spaced frames
         result = _ff([
             "-y", "-i", str(src),
             "-vf", f"select=not(mod(n\\,max(1\\,trunc(n/{n_frames}))))",

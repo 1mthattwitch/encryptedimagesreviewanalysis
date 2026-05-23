@@ -259,10 +259,31 @@ echo.
 
 :: --- 3. Auto-update from GitHub -------------------------------------------
 echo [3/4] Checking for updates...
+
+:: Read optional GitHub token for private repo access.
+:: To use: create github_token.txt in the same folder as run.bat
+:: and paste your fine-grained read-only GitHub PAT (one line, no spaces).
+set GITHUB_TOKEN=
+if exist "%~dp0github_token.txt" (
+    for /f "usebackq delims=" %%T in ("%~dp0github_token.txt") do (
+        if not defined GITHUB_TOKEN set GITHUB_TOKEN=%%T
+    )
+)
+if defined GITHUB_TOKEN (
+    echo   Token found -- using authenticated download.
+) else (
+    echo   No token -- trying public download.
+    echo   Tip: create github_token.txt with a read-only PAT for private repo.
+)
+
 (
-echo import urllib.request, os
-echo BRANCH = "claude/decrypt-gallery-vault-POpHP"
-echo BASE = "https://raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
+echo import urllib.request, os, sys
+echo TOKEN = os.environ.get^("GITHUB_TOKEN", ""^)
+echo BRANCH = "main"
+echo if TOKEN:
+echo     BASE = "https://" + TOKEN + "@raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
+echo else:
+echo     BASE = "https://raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
 echo FILES = [
 echo     "mediaorganizer/__init__.py",
 echo     "mediaorganizer/scanner.py",
@@ -300,7 +321,9 @@ echo         ok += 1
 echo     except Exception as e:
 echo         print^("  ! " + f + " -- " + str^(e^)^)
 echo if ok == 0:
-echo     print^("  No network -- running with existing files."^)
+echo     print^("  No network or auth error -- running with existing files."^)
+echo     if not TOKEN:
+echo         print^("  Tip: create github_token.txt with a fine-grained read-only PAT."^)
 echo else:
 echo     print^("  Updated " + str^(ok^) + " file(s^)."^)
 ) > _update.py

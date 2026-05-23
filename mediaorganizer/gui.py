@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-# ── Colour palette ────────────────────────────────────────────────────────────
+# ── Colour palette ────────────────────────────────────────────────────────────────────────────────
 BG     = "#1a1a2e"
 BG2    = "#16213e"
 BG3    = "#0f3460"
@@ -44,38 +44,33 @@ def _style(root: tk.Tk):
                  borderwidth=1, relief="flat", padding=(10, 5))
     s.map("TButton", background=[("active", ACCENT)])
     s.configure("Accent.TButton", background=ACCENT, foreground="white",
-                 font=("Segoe UI", 10, "bold"))
-    s.map("Accent.TButton", background=[("active", "#c0392b")])
-    s.configure("TEntry", fieldbackground=BG2, foreground=FG, bordercolor=BG3,
-                 insertcolor=FG)
-    s.configure("TCombobox", fieldbackground=BG2, foreground=FG, background=BG2,
-                 arrowcolor=FG)
-    s.configure("Vertical.TScrollbar", background=BG2, troughcolor=BG,
-                 arrowcolor=FG2)
-    s.configure("TProgressbar", background=ACCENT, troughcolor=BG2)
+                 padding=(10, 5))
+    s.map("Accent.TButton", background=[("active", "#c73652")])
+    s.configure("TScrollbar", background=BG2, troughcolor=BG,
+                 arrowcolor=FG2, borderwidth=0)
+    s.configure("TCombobox", fieldbackground=BG2, background=BG2,
+                 selectbackground=BG3, foreground=FG, arrowcolor=FG2)
+    s.map("TCombobox", fieldbackground=[("readonly", BG2)])
     s.configure("Treeview", background=BG2, foreground=FG,
-                 fieldbackground=BG2, borderwidth=0, rowheight=22)
+                 fieldbackground=BG2, rowheight=22, borderwidth=0)
     s.configure("Treeview.Heading", background=BG3, foreground=FG,
-                 borderwidth=0)
-    s.map("Treeview", background=[("selected", BG3)])
+                 borderwidth=0, relief="flat")
+    s.map("Treeview", background=[("selected", BG3)],
+          foreground=[("selected", FG)])
+    root.option_add("*TCombobox*Listbox.background", BG2)
+    root.option_add("*TCombobox*Listbox.foreground", FG)
+    root.option_add("*TCombobox*Listbox.selectBackground", BG3)
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _human(n: int) -> str:
-    for u in ("B", "KB", "MB", "GB"):
+    for unit in ("B", "KB", "MB", "GB"):
         if n < 1024:
-            return f"{n:.1f} {u}"
+            return f"{n:.0f} {unit}"
         n /= 1024
     return f"{n:.1f} TB"
 
 
-def _grade_color(grade: Optional[str]) -> str:
-    return {None: FG2, "A": GREEN, "B": GREEN, "C": YELLOW, "D": RED, "F": RED}.get(grade, FG2)
-
-
-# ── Main application ──────────────────────────────────────────────────────────
-
+# ── Main App window ──────────────────────────────────────────────────────────────────────────────────
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -101,7 +96,7 @@ class App(tk.Tk):
         self._build_main()
         self._build_status()
 
-    # ── Toolbar ───────────────────────────────────────────────────────────────
+    # ── Toolbar ──────────────────────────────────────────────────────────────────────────────
 
     def _build_toolbar(self):
         tb = tk.Frame(self, bg=BG3, height=50)
@@ -118,37 +113,43 @@ class App(tk.Tk):
         tk.Label(tb, textvariable=self._folder_var, bg=BG3, fg=FG2,
                  font=MONO).pack(side="left", padx=4)
 
-        # Recursive
-        tk.Checkbutton(tb, text="Recursive", variable=self._recursive_var,
-                       bg=BG3, fg=FG, selectcolor=BG2,
-                       activebackground=BG3).pack(side="left", padx=4)
+        # Right-side buttons
+        btn_row = tk.Frame(tb, bg=BG3)
+        btn_row.pack(side="right", padx=8)
+        tk.Button(btn_row, text="🔍 Scan", bg=ACCENT, fg="white", relief="flat",
+                  font=("Segoe UI", 10, "bold"),
+                  command=self._scan).pack(side="left", padx=2)
+        tk.Button(btn_row, text="📂 Organise", bg=BG2, fg=FG, relief="flat",
+                  command=self._organise).pack(side="left", padx=2)
+        tk.Button(btn_row, text="📁 Open Lightbox", bg=BG2, fg=FG, relief="flat",
+                  command=self._open_lightbox).pack(side="left", padx=2)
+        tk.Button(btn_row, text="✏ Review Renames", bg=BG2, fg=FG, relief="flat",
+                  command=self._open_rename_preview).pack(side="left", padx=2)
+        tk.Button(btn_row, text="🧹 Dupes", bg=BG2, fg=FG, relief="flat",
+                  command=self._launch_dupe_finder).pack(side="left", padx=2)
 
-        # Mode
-        tk.Label(tb, text="Mode:", bg=BG3, fg=FG2).pack(side="left", padx=(12, 2))
-        mode_cb = ttk.Combobox(tb, textvariable=self._mode_var,
-                               values=["type", "date", "content", "event"],
-                               width=8, state="readonly")
-        mode_cb.pack(side="left", padx=2)
-
-        # Scan
-        self._scan_btn = tk.Button(tb, text="⟳ Scan", bg=ACCENT, fg="white",
-                                   font=("Segoe UI", 10, "bold"), relief="flat",
-                                   padx=12, command=self._scan)
-        self._scan_btn.pack(side="left", padx=8)
-
-        # Watch toggle
-        self._watch_btn = tk.Button(tb, text="👁 Watch", bg=BG2, fg=FG,
-                                    relief="flat", padx=8,
-                                    command=self._toggle_watch)
-        self._watch_btn.pack(side="left", padx=4)
+        # Mode + options
+        opts = tk.Frame(tb, bg=BG3)
+        opts.pack(side="right", padx=8)
+        tk.Label(opts, text="Mode:", bg=BG3, fg=FG2).pack(side="left")
+        for mode in ("type", "date", "content", "event"):
+            tk.Radiobutton(opts, text=mode, variable=self._mode_var, value=mode,
+                           bg=BG3, fg=FG, activebackground=BG3,
+                           selectcolor=BG2, relief="flat").pack(side="left", padx=2)
+        tk.Checkbutton(opts, text="Apply", variable=self._apply_var,
+                       bg=BG3, fg=FG, activebackground=BG3,
+                       selectcolor=BG2).pack(side="left", padx=4)
+        tk.Checkbutton(opts, text="Recursive", variable=self._recursive_var,
+                       bg=BG3, fg=FG, activebackground=BG3,
+                       selectcolor=BG2).pack(side="left", padx=4)
 
         # Ollama status
-        self._ollama_label = tk.Label(tb, text="● Ollama", bg=BG3, fg=RED,
-                                      font=("Segoe UI", 9))
-        self._ollama_label.pack(side="right", padx=12)
-        self.after(500, self._check_ollama)
+        self._ollama_label = tk.Label(tb, text="Ollama: …", bg=BG3, fg=FG2,
+                                       font=("Segoe UI", 9))
+        self._ollama_label.pack(side="right", padx=8)
+        threading.Thread(target=self._check_ollama, daemon=True).start()
 
-    # ── Main panes ────────────────────────────────────────────────────────────
+    # ── Main pane ─────────────────────────────────────────────────────────────────────────────────
 
     def _build_main(self):
         pw = tk.PanedWindow(self, orient="horizontal", bg=BG,
@@ -193,172 +194,158 @@ class App(tk.Tk):
         fb.pack(fill="x", padx=4, pady=4)
         tk.Label(fb, text="Filter:", bg=BG2, fg=FG2).pack(side="left", padx=4)
         fe = tk.Entry(fb, textvariable=self._filter_var, bg=BG2, fg=FG,
-                      insertbackground=FG, relief="flat")
-        fe.pack(side="left", fill="x", expand=True)
-        self._filter_var.trace_add("write", lambda *_: self._apply_filter())
-
+                      relief="flat", insertbackground=FG)
+        fe.pack(side="left", fill="x", expand=True, padx=4)
+        fe.bind("<Return>", lambda _: self._apply_filter())
+        fe.bind("<KeyRelease>", lambda _: self._apply_filter())
         tk.Label(fb, text="Grade:", bg=BG2, fg=FG2).pack(side="left", padx=(8, 2))
-        qf = ttk.Combobox(fb, textvariable=self._quality_filter_var,
-                          values=["All", "A", "B", "C", "D", "F"],
-                          width=4, state="readonly")
-        qf.pack(side="left")
-        self._quality_filter_var.trace_add("write", lambda *_: self._apply_filter())
+        grade_cb = ttk.Combobox(fb, textvariable=self._quality_filter_var,
+                                values=["All", "A", "B", "C", "D", "F"],
+                                width=4, state="readonly")
+        grade_cb.pack(side="left", padx=2)
+        grade_cb.bind("<<ComboboxSelected>>", lambda _: self._apply_filter())
 
-        # Treeview
-        cols = ("name", "type", "size", "date", "grade", "status")
+        # Tree
+        cols = ("name", "type", "size", "date", "grade", "ok")
         self._tree = ttk.Treeview(parent, columns=cols, show="headings",
                                    selectmode="extended")
-        self._tree.heading("name",   text="Name")
-        self._tree.heading("type",   text="Type")
-        self._tree.heading("size",   text="Size")
-        self._tree.heading("date",   text="Date")
-        self._tree.heading("grade",  text="Q")
-        self._tree.heading("status", text="Status")
-        self._tree.column("name",   width=160, stretch=True)
-        self._tree.column("type",   width=60,  anchor="center")
-        self._tree.column("size",   width=60,  anchor="e")
-        self._tree.column("date",   width=80,  anchor="center")
-        self._tree.column("grade",  width=30,  anchor="center")
-        self._tree.column("status", width=50,  anchor="center")
-
-        # tag colours
-        self._tree.tag_configure("grade_a", foreground=GREEN)
-        self._tree.tag_configure("grade_b", foreground=GREEN)
-        self._tree.tag_configure("grade_c", foreground=YELLOW)
-        self._tree.tag_configure("grade_d", foreground=RED)
-        self._tree.tag_configure("grade_f", foreground=RED)
+        self._tree.heading("name",  text="Name")
+        self._tree.heading("type",  text="Type")
+        self._tree.heading("size",  text="Size")
+        self._tree.heading("date",  text="Date")
+        self._tree.heading("grade", text="Q")
+        self._tree.heading("ok",    text="✓")
+        self._tree.column("name",  width=180, stretch=True)
+        self._tree.column("type",  width=55,  stretch=False)
+        self._tree.column("size",  width=65,  stretch=False, anchor="e")
+        self._tree.column("date",  width=85,  stretch=False)
+        self._tree.column("grade", width=28,  stretch=False, anchor="center")
+        self._tree.column("ok",    width=24,  stretch=False, anchor="center")
         self._tree.tag_configure("unhealthy", foreground=RED)
+        for g, col in (("a", GREEN), ("b", "#5dade2"), ("c", FG),
+                       ("d", YELLOW), ("f", RED)):
+            self._tree.tag_configure(f"grade_{g}", foreground=col)
 
-        vsb = ttk.Scrollbar(parent, orient="vertical",
-                             command=self._tree.yview)
+        vsb = ttk.Scrollbar(parent, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
-        self._tree.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=4)
-        vsb.pack(side="right", fill="y", pady=4)
-
+        self._tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", self._on_double_click)
 
-    # ── Tabs ──────────────────────────────────────────────────────────────────
+        # Count label
+        self._count_label = tk.Label(parent, text="No scan yet", bg=BG, fg=FG2,
+                                      font=("Segoe UI", 8))
+        self._count_label.pack(anchor="w", padx=4, pady=2)
 
     def _build_preview_tab(self):
         p = self._tab_preview
-        # Image canvas
-        self._canvas = tk.Canvas(p, bg=BG3, height=320, highlightthickness=0)
-        self._canvas.pack(fill="x", padx=8, pady=(8, 4))
-        # Buttons
-        btn_row = tk.Frame(p, bg=BG)
-        btn_row.pack(fill="x", padx=8)
-        tk.Button(btn_row, text="🔍 Lightbox", bg=BG2, fg=FG, relief="flat",
-                  command=self._open_lightbox).pack(side="left", padx=2)
-        tk.Button(btn_row, text="✏ Review Renames", bg=BG2, fg=FG, relief="flat",
-                  command=self._open_rename_preview).pack(side="left", padx=2)
-        tk.Button(btn_row, text="↻ Rotate", bg=BG2, fg=FG, relief="flat",
-                  command=self._rotate_current).pack(side="left", padx=2)
 
-        # Metadata labels
-        self._preview_info = tk.Text(p, height=6, bg=BG2, fg=FG2,
-                                     relief="flat", font=MONO, state="disabled")
+        # Image canvas
+        self._canvas = tk.Canvas(p, bg=BG2, height=220, highlightthickness=0)
+        self._canvas.pack(fill="x", padx=8, pady=(8, 4))
+
+        # Rotate button
+        tk.Button(p, text="⟳ Fix Rotation", bg=BG2, fg=FG, relief="flat",
+                  command=self._rotate_current).pack(anchor="w", padx=8, pady=2)
+
+        # Info pane
+        self._preview_info = tk.Text(p, bg=BG2, fg=FG, font=MONO, height=8,
+                                      relief="flat", state="disabled",
+                                      wrap="none")
         self._preview_info.pack(fill="x", padx=8, pady=4)
+
         # AI description
-        tk.Label(p, text="AI Description:", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=8)
+        desc_row = tk.Frame(p, bg=BG)
+        desc_row.pack(fill="x", padx=8, pady=2)
+        tk.Label(desc_row, text="AI Description:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 8)).pack(side="left")
         self._desc_var = tk.StringVar()
-        self._desc_entry = tk.Entry(p, textvariable=self._desc_var, bg=BG2, fg=FG,
-                                    insertbackground=FG, relief="flat", font=MONO)
-        self._desc_entry.pack(fill="x", padx=8, pady=2)
+        tk.Entry(desc_row, textvariable=self._desc_var, bg=BG2, fg=FG,
+                 relief="flat", state="readonly").pack(side="left", fill="x",
+                                                       expand=True, padx=4)
+
         # Proposed name
-        tk.Label(p, text="Proposed Name:", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=8)
+        prop_row = tk.Frame(p, bg=BG)
+        prop_row.pack(fill="x", padx=8, pady=2)
+        tk.Label(prop_row, text="Proposed name:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 8)).pack(side="left")
         self._proposed_var = tk.StringVar()
-        tk.Entry(p, textvariable=self._proposed_var, bg=BG2, fg=FG,
-                 insertbackground=FG, relief="flat", font=MONO).pack(fill="x", padx=8, pady=2)
+        tk.Entry(prop_row, textvariable=self._proposed_var, bg=BG2, fg=FG,
+                 relief="flat", state="readonly").pack(side="left", fill="x",
+                                                       expand=True, padx=4)
+
         # OCR text
-        tk.Label(p, text="OCR Text:", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=8)
-        self._ocr_text = tk.Text(p, height=3, bg=BG2, fg=FG2,
-                                  relief="flat", font=MONO, state="disabled")
-        self._ocr_text.pack(fill="x", padx=8, pady=2)
+        tk.Label(p, text="OCR Text:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=8)
+        self._ocr_text = tk.Text(p, bg=BG2, fg=FG2, font=MONO, height=3,
+                                  relief="flat", state="disabled")
+        self._ocr_text.pack(fill="x", padx=8, pady=(0, 4))
+
         # Transcript
-        tk.Label(p, text="Transcript:", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=8)
-        self._transcript_text = tk.Text(p, height=3, bg=BG2, fg=FG2,
-                                         relief="flat", font=MONO, state="disabled")
-        self._transcript_text.pack(fill="x", padx=8, pady=(2, 8))
+        tk.Label(p, text="Transcript:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=8)
+        self._transcript_text = tk.Text(p, bg=BG2, fg=FG2, font=MONO, height=3,
+                                         relief="flat", state="disabled")
+        self._transcript_text.pack(fill="x", padx=8, pady=(0, 8))
 
     def _build_dupes_tab(self):
         p = self._tab_dupes
-        tk.Label(p, text="Duplicate Groups", bg=BG, fg=ACCENT,
+        tk.Label(p, text="Duplicate groups", bg=BG, fg=ACCENT,
                  font=("Segoe UI", 11, "bold")).pack(padx=8, pady=(8, 4), anchor="w")
-        self._dupe_info_label = tk.Label(p, text="Run scan to detect duplicates",
-                                          bg=BG, fg=FG2)
-        self._dupe_info_label.pack(anchor="w", padx=8)
 
-        cols = ("kind", "count", "wasted", "keep")
+        cols = ("file", "size", "match")
         self._dupe_tree = ttk.Treeview(p, columns=cols, show="headings")
-        self._dupe_tree.heading("kind",   text="Type")
-        self._dupe_tree.heading("count",  text="Files")
-        self._dupe_tree.heading("wasted", text="Wasted")
-        self._dupe_tree.heading("keep",   text="Keep")
-        self._dupe_tree.column("kind",   width=70)
-        self._dupe_tree.column("count",  width=50, anchor="center")
-        self._dupe_tree.column("wasted", width=80, anchor="e")
-        self._dupe_tree.column("keep",   width=200)
-        vsb = ttk.Scrollbar(p, orient="vertical", command=self._dupe_tree.yview)
-        self._dupe_tree.configure(yscrollcommand=vsb.set)
-        self._dupe_tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=4)
-        vsb.pack(side="right", fill="y", pady=4)
+        self._dupe_tree.heading("file",  text="File")
+        self._dupe_tree.heading("size",  text="Size")
+        self._dupe_tree.heading("match", text="Match type")
+        self._dupe_tree.column("file",  width=260)
+        self._dupe_tree.column("size",  width=70, anchor="e")
+        self._dupe_tree.column("match", width=90, anchor="center")
+
+        dsb = ttk.Scrollbar(p, orient="vertical", command=self._dupe_tree.yview)
+        self._dupe_tree.configure(yscrollcommand=dsb.set)
+        self._dupe_tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
+        dsb.pack(side="right", fill="y", pady=8)
 
     def _build_events_tab(self):
         p = self._tab_events
-        hdr = tk.Frame(p, bg=BG)
-        hdr.pack(fill="x", padx=8, pady=(8, 4))
-        tk.Label(hdr, text="Photo Events", bg=BG, fg=ACCENT,
+        top = tk.Frame(p, bg=BG)
+        top.pack(fill="x", padx=8, pady=(8, 4))
+        tk.Label(top, text="Events (time-based groups)", bg=BG, fg=ACCENT,
                  font=("Segoe UI", 11, "bold")).pack(side="left")
-        tk.Button(hdr, text="⚙ Gap (min):", bg=BG, fg=FG2,
-                  relief="flat").pack(side="right", padx=2)
+        tk.Button(top, text="Regroup", bg=BG2, fg=FG, relief="flat",
+                  command=self._regroup_events).pack(side="left", padx=8)
         self._gap_var = tk.StringVar(value="60")
-        tk.Entry(hdr, textvariable=self._gap_var, width=5,
-                 bg=BG2, fg=FG, relief="flat").pack(side="right")
-        tk.Button(hdr, text="↺ Regroup", bg=BG2, fg=FG, relief="flat",
-                  command=self._regroup_events).pack(side="right", padx=4)
+        tk.Label(top, text="gap (min):", bg=BG, fg=FG2).pack(side="left")
+        tk.Entry(top, textvariable=self._gap_var, width=5, bg=BG2, fg=FG,
+                 relief="flat").pack(side="left", padx=4)
+        tk.Button(top, text="Organise by Event", bg=BG2, fg=FG, relief="flat",
+                  command=self._organise_by_event).pack(side="right")
 
-        cols = ("name", "count", "start", "end")
-        self._event_tree = ttk.Treeview(p, columns=cols, show="headings")
-        self._event_tree.heading("name",  text="Event")
-        self._event_tree.heading("count", text="Photos")
-        self._event_tree.heading("start", text="Start")
-        self._event_tree.heading("end",   text="End")
-        self._event_tree.column("name",  width=250, stretch=True)
-        self._event_tree.column("count", width=60,  anchor="center")
-        self._event_tree.column("start", width=100, anchor="center")
-        self._event_tree.column("end",   width=100, anchor="center")
-        vsb2 = ttk.Scrollbar(p, orient="vertical", command=self._event_tree.yview)
-        self._event_tree.configure(yscrollcommand=vsb2.set)
-        self._event_tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=4)
-        vsb2.pack(side="right", fill="y", pady=4)
+        cols = ("event", "count", "start", "end")
+        self._ev_tree = ttk.Treeview(p, columns=cols, show="headings")
+        self._ev_tree.heading("event", text="Event")
+        self._ev_tree.heading("count", text="Files")
+        self._ev_tree.heading("start", text="Start")
+        self._ev_tree.heading("end",   text="End")
+        self._ev_tree.column("event", width=200)
+        self._ev_tree.column("count", width=50, anchor="center")
+        self._ev_tree.column("start", width=100)
+        self._ev_tree.column("end",   width=100)
 
-        tk.Button(p, text="📂 Organise by Event", bg=ACCENT, fg="white",
-                  relief="flat", font=("Segoe UI", 10, "bold"),
-                  command=self._organise_by_event).pack(pady=6)
+        esb = ttk.Scrollbar(p, orient="vertical", command=self._ev_tree.yview)
+        self._ev_tree.configure(yscrollcommand=esb.set)
+        self._ev_tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
+        esb.pack(side="right", fill="y", pady=8)
 
     def _build_storage_tab(self):
         p = self._tab_storage
-        tk.Label(p, text="Storage Breakdown", bg=BG, fg=ACCENT,
+        tk.Label(p, text="Storage Report", bg=BG, fg=ACCENT,
                  font=("Segoe UI", 11, "bold")).pack(padx=8, pady=(8, 4), anchor="w")
-
-        self._storage_canvas = tk.Canvas(p, bg=BG2, height=180,
-                                          highlightthickness=0)
-        self._storage_canvas.pack(fill="x", padx=8, pady=4)
-
-        tk.Label(p, text="Top 10 Largest Files:", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=8)
-        cols = ("path", "size")
-        self._top10_tree = ttk.Treeview(p, columns=cols, show="headings", height=8)
-        self._top10_tree.heading("path", text="File")
-        self._top10_tree.heading("size", text="Size")
-        self._top10_tree.column("path", width=350, stretch=True)
-        self._top10_tree.column("size", width=80, anchor="e")
-        self._top10_tree.pack(fill="x", padx=8, pady=4)
+        self._storage_text = tk.Text(p, bg=BG2, fg=FG, font=MONO,
+                                      relief="flat", state="disabled")
+        self._storage_text.pack(fill="both", expand=True, padx=8, pady=8)
 
     def _build_tools_tab(self):
         p = self._tab_tools
@@ -440,7 +427,7 @@ class App(tk.Tk):
                   command=self._tool_watermark).pack(side="left", padx=4)
 
         # Video tools
-        section("🎬 Video Tools")
+        section("🎥 Video Tools")
         tool_row("Compress Video",       self._tool_compress_video)
         tool_row("Convert to MP4",       self._tool_convert_mp4)
 
@@ -484,8 +471,9 @@ class App(tk.Tk):
                      state="readonly").pack(side="left", padx=4)
         tk.Button(row_trans, text="Transcribe",
                   bg=BG2, fg=FG, relief="flat",
-                  command=self._tool_transcribe).pack(side="left",
-                  text="(needs: pip install openai-whisper)")
+                  command=self._tool_transcribe).pack(side="left", padx=(4, 2))
+        tk.Label(row_trans, text="(needs: pip install openai-whisper)",
+                 bg=BG, fg=FG2, font=("Segoe UI", 8)).pack(side="left")
 
         # Organisation
         section("📂 Organisation")
@@ -518,65 +506,53 @@ class App(tk.Tk):
         row_out.pack(fill="x", padx=12, pady=4)
         tk.Label(row_out, text="Output folder:", bg=BG, fg=FG).pack(side="left")
         tk.Entry(row_out, textvariable=self._output_var, bg=BG2, fg=FG,
-                 relief="flat", width=35).pack(side="left", padx=4)
+                 relief="flat").pack(side="left", fill="x", expand=True, padx=4)
         tk.Button(row_out, text="…", bg=BG2, fg=FG, relief="flat",
-                  command=self._pick_output).pack(side="left")
+                  command=self._pick_output, width=3).pack(side="left")
 
-        tk.Frame(p, bg=BG3, height=1).pack(fill="x", padx=8, pady=6)
+        btn("Save JSON Manifest",    self._export_json,
+            "manifest.json — every file with all metadata")
+        btn("Save CSV Spreadsheet",  self._export_csv,
+            "spreadsheet.csv — open in Excel")
+        btn("Save HTML Gallery",     self._export_html,
+            "gallery.html — offline thumbnail browser")
+        btn("Save GPS Map",          self._export_map,
+            "map.html — photos with GPS plotted on offline map")
+        btn("Save Contact Sheet",    self._export_contact_sheet,
+            "contact_sheet.jpg — thumbnail grid image")
+        btn("Save Calendar Heat Map", self._export_calendar,
+            "calendar.html — activity heat map by date")
 
-        btn("📋 Organise Files", self._organise,
-            "Move files into folders by selected mode")
-
-        row_apply = tk.Frame(p, bg=BG)
-        row_apply.pack(fill="x", padx=12, pady=2)
-        tk.Checkbutton(row_apply, text="Apply (execute moves — otherwise dry-run only)",
-                       variable=self._apply_var, bg=BG, fg=FG,
-                       selectcolor=BG2, activebackground=BG).pack(side="left")
-
-        tk.Frame(p, bg=BG3, height=1).pack(fill="x", padx=8, pady=6)
-
-        btn("📦 Export JSON Manifest",    self._export_json)
-        btn("📊 Export CSV Spreadsheet",  self._export_csv)
-        btn("🌐 Export HTML Gallery",     self._export_html,
-            "Self-contained, opens in any browser")
-        btn("📍 Export GPS Map",          self._export_map,
-            "Needs GPS data in EXIF; folium optional")
-        btn("🖼 Contact Sheet",           self._export_contact_sheet,
-            "Thumbnail grid of all images")
-
-        tk.Frame(p, bg=BG3, height=1).pack(fill="x", padx=8, pady=6)
-        btn("📅 Calendar Heat Map",       self._export_calendar)
-
-    # ── Status bar ────────────────────────────────────────────────────────────
+        # Watch folder toggle
+        sep = tk.Frame(p, bg=BG3, height=1)
+        sep.pack(fill="x", padx=8, pady=8)
+        self._watch_btn = tk.Button(p, text="👁 Start Watch Folder",
+                                     bg=BG2, fg=FG, relief="flat",
+                                     command=self._toggle_watch)
+        self._watch_btn.pack(anchor="w", padx=12)
+        self._watch_status = tk.Label(p, text="", bg=BG, fg=FG2,
+                                       font=("Segoe UI", 8))
+        self._watch_status.pack(anchor="w", padx=12)
 
     def _build_status(self):
-        sb = tk.Frame(self, bg=BG2, height=28)
+        sb = tk.Frame(self, bg=BG2, height=24)
         sb.pack(fill="x", side="bottom")
         sb.pack_propagate(False)
-        self._status_var = tk.StringVar(value="Ready")
-        tk.Label(sb, textvariable=self._status_var, bg=BG2, fg=FG2,
-                 font=("Segoe UI", 9)).pack(side="left", padx=8, pady=4)
-        self._progress = ttk.Progressbar(sb, length=200, mode="determinate")
-        self._progress.pack(side="right", padx=8, pady=4)
-        self._count_label = tk.Label(sb, text="", bg=BG2, fg=FG2,
-                                      font=("Segoe UI", 9))
-        self._count_label.pack(side="right", padx=8)
+        self._status_label = tk.Label(sb, text="Ready", bg=BG2, fg=FG2,
+                                       font=("Segoe UI", 9))
+        self._status_label.pack(side="left", padx=8)
+        self._progress = ttk.Progressbar(sb, length=180, mode="determinate")
+        self._progress.pack(side="right", padx=8, pady=3)
 
     def _set_status(self, msg: str, progress: float = 0.0):
-        self._status_var.set(msg)
+        self._status_label.configure(text=msg)
         self._progress["value"] = progress * 100
-        self.update_idletasks()
-
-    # ── Actions ───────────────────────────────────────────────────────────────
 
     def _browse(self):
-        folder = filedialog.askdirectory(title="Select media folder")
+        folder = filedialog.askdirectory(title="Select folder to scan")
         if folder:
             self._scan_folder = Path(folder)
-            short = str(self._scan_folder)
-            if len(short) > 60:
-                short = "…" + short[-57:]
-            self._folder_var.set(short)
+            self._folder_var.set(str(self._scan_folder))
 
     def _pick_output(self):
         folder = filedialog.askdirectory(title="Select output folder")
@@ -587,11 +563,11 @@ class App(tk.Tk):
         def _check():
             from . import analyzer
             ok = analyzer.is_available()
-            color = GREEN if ok else RED
-            text = "● Ollama ✓" if ok else "● Ollama ✗"
-            self.after(0, lambda: self._ollama_label.configure(fg=color, text=text))
-        threading.Thread(target=_check, daemon=True).start()
-        self.after(30000, self._check_ollama)
+            label = "Ollama: ✓ running" if ok else "Ollama: offline"
+            color = GREEN if ok else FG2
+            self.after(0, lambda: self._ollama_label.configure(
+                text=label, fg=color))
+        _check()
 
     def _scan(self):
         if not self._scan_folder:
@@ -679,55 +655,29 @@ class App(tk.Tk):
 
     def _populate_dupes(self, groups):
         self._dupe_tree.delete(*self._dupe_tree.get_children())
-        total_wasted = sum(g.wasted_bytes for g in groups)
-        from . import reporter as rep
-        self._dupe_info_label.configure(
-            text=f"{len(groups)} groups  |  {rep._human(total_wasted)} recoverable")
-        for g in groups:
-            self._dupe_tree.insert("", "end", values=(
-                g.kind, len(g.entries),
-                rep._human(g.wasted_bytes),
-                g.keep.path.name,
-            ))
+        for group in groups:
+            for entry, match_type in group:
+                self._dupe_tree.insert("", "end",
+                                        values=(entry.path.name,
+                                                _human(entry.size_bytes),
+                                                match_type))
 
     def _populate_events(self, groups):
-        self._event_tree.delete(*self._event_tree.get_children())
-        for g in groups:
-            start_str = g.start.strftime("%Y-%m-%d") if g.start.year > 1970 else "—"
-            end_str   = g.end.strftime("%Y-%m-%d")   if g.end.year   > 1970 else "—"
-            self._event_tree.insert("", "end", values=(
-                g.display_name, len(g.entries), start_str, end_str))
+        self._ev_tree.delete(*self._ev_tree.get_children())
+        for name, entries in groups:
+            dates = [e.date for e in entries if e.date]
+            start = min(dates).strftime("%Y-%m-%d") if dates else ""
+            end   = max(dates).strftime("%Y-%m-%d") if dates else ""
+            self._ev_tree.insert("", "end",
+                                  values=(name, len(entries), start, end))
 
     def _populate_storage(self, entries):
-        from . import reporter as rep
-        sr = rep.storage_report(entries)
-        # Bar chart on canvas
-        c = self._storage_canvas
-        c.delete("all")
-        cw = c.winfo_width() or 500
-        ch = 180
-        types = list(sr["by_type"].items())
-        if not types:
-            return
-        max_bytes = max(t[1]["bytes"] for t in types) or 1
-        colors = [ACCENT, "#3498db", GREEN, YELLOW, "#9b59b6", "#1abc9c"]
-        bar_w = max(20, (cw - 60) // max(len(types), 1))
-        for i, (ftype, info) in enumerate(types):
-            bh = int((info["bytes"] / max_bytes) * (ch - 40))
-            x = 30 + i * (bar_w + 4)
-            color = colors[i % len(colors)]
-            c.create_rectangle(x, ch - bh - 20, x + bar_w, ch - 20,
-                                fill=color, outline="")
-            c.create_text(x + bar_w // 2, ch - 10, text=ftype[:6],
-                          fill=FG2, font=("Segoe UI", 8))
-            c.create_text(x + bar_w // 2, ch - bh - 30, text=info["human"],
-                          fill=FG, font=("Segoe UI", 7))
-
-        # Top 10
-        self._top10_tree.delete(*self._top10_tree.get_children())
-        for item in sr["top10_largest"]:
-            name = Path(item["path"]).name
-            self._top10_tree.insert("", "end", values=(name, item["human"]))
+        from . import reporter
+        report = reporter.storage_report(entries)
+        self._storage_text.configure(state="normal")
+        self._storage_text.delete("1.0", "end")
+        self._storage_text.insert("1.0", report)
+        self._storage_text.configure(state="disabled")
 
     def _on_select(self, _event=None):
         sel = self._tree.selection()
@@ -756,7 +706,7 @@ class App(tk.Tk):
                 self._canvas.create_text(200, 80, text="(preview unavailable)",
                                           fill=FG2)
         elif entry.file_type == "video":
-            self._canvas.create_text(200, 80, text="🎬 Video file",
+            self._canvas.create_text(200, 80, text="🎦 Video file",
                                       fill=FG2, font=("Segoe UI", 16))
         else:
             self._canvas.create_text(200, 80, text=f"{entry.file_type} file",
@@ -776,9 +726,9 @@ class App(tk.Tk):
         if entry.gps:
             lines.append(f"GPS:       {entry.gps[0]:.5f}, {entry.gps[1]:.5f}")
         if entry.quality_grade:
-            lines.append(f"Quality:   {entry.quality_grade}  "
-                         f"blur={entry.quality_blur:.0f}  "
-                         f"exp={entry.quality_exposure:.2f}")
+            blur_s = f"{entry.quality_blur:.0f}" if entry.quality_blur is not None else "?"
+            exp_s  = f"{entry.quality_exposure:.2f}" if entry.quality_exposure is not None else "?"
+            lines.append(f"Quality:   {entry.quality_grade}  blur={blur_s}  exp={exp_s}")
         if not entry.health_ok:
             lines.append(f"Issues:    {'; '.join(entry.health_issues)}")
 
@@ -807,7 +757,6 @@ class App(tk.Tk):
         if not self._selected_entry:
             return
         try:
-            from .lightbox import Lightbox
             Lightbox(self, self._entries, self._selected_entry)
         except Exception as e:
             messagebox.showerror("Lightbox", str(e))
@@ -828,7 +777,7 @@ class App(tk.Tk):
 
     def _open_rename_preview(self):
         if not self._entries:
-            messagebox.showinfo("Renames", "No files scanned yet.")
+            messagebox.showinfo("Rename Preview", "Scan a folder first.")
             return
         RenamePreview(self, self._entries)
 
@@ -842,173 +791,237 @@ class App(tk.Tk):
         self._populate_events(self._event_groups)
 
     def _organise_by_event(self):
-        if not self._event_groups:
+        sel = self._ev_tree.selection()
+        if not sel:
+            messagebox.showinfo("Events", "Select an event row first.")
             return
         output = Path(self._output_var.get())
+        apply_moves = self._apply_var.get()
         from . import organizer
-        for g in self._event_groups:
-            moves = organizer.plan_moves(g.entries, output, mode="event",
-                                          event_name=g.display_name)
-            if self._apply_var.get():
-                log = output / "move_log.json"
-                organizer.apply_moves(moves, log_path=log)
-        self._set_status("Events organised" if self._apply_var.get()
-                         else "Dry-run complete (enable Apply in Export tab)")
+        for iid in sel:
+            vals = self._ev_tree.item(iid, "values")
+            event_name = vals[0] if vals else "Event"
+            moves = organizer.plan_moves(
+                self._entries, output, mode="event", event_name=event_name)
+            if apply_moves:
+                records = organizer.apply_moves(
+                    moves, log_path=output / "move_log.json")
+                n = sum(1 for r in records if r["ok"])
+                self._set_status(f"Moved {n} files to event '{event_name}'")
+            else:
+                self._set_status(
+                    f"Dry-run: {len(moves)} files would move to '{event_name}'")
 
     def _organise(self):
         if not self._entries:
-            messagebox.showinfo("Organise", "Nothing scanned yet.")
+            messagebox.showinfo("Organise", "Scan a folder first.")
             return
         output = Path(self._output_var.get())
-        mode = self._mode_var.get()
-        from . import organizer
-        moves = organizer.plan_moves(self._entries, output, mode=mode)
-        if not self._apply_var.get():
-            msg = f"{len(moves)} moves planned ({mode} mode).\nEnable Apply in Export tab to execute."
-            messagebox.showinfo("Dry Run", msg)
-        else:
-            log = output / "move_log.json"
-            records = organizer.apply_moves(moves, log_path=log)
-            ok = sum(1 for r in records if r["ok"])
-            messagebox.showinfo("Done", f"Moved {ok}/{len(records)} files.")
+        mode   = self._mode_var.get()
+        apply  = self._apply_var.get()
 
-    # ── Tool handlers ─────────────────────────────────────────────────────────
+        def _work():
+            from . import organizer, analyzer
+            if mode == "content" and not any(e.ai_category for e in self._entries):
+                self.after(0, lambda: self._set_status("Running AI analysis…", 0.3))
+                analyzer.analyze_all(self._entries)
+            self.after(0, lambda: self._set_status("Planning moves…", 0.5))
+            moves = organizer.plan_moves(self._entries, output, mode=mode)
+            if apply:
+                self.after(0, lambda: self._set_status("Moving files…", 0.7))
+                records = organizer.apply_moves(
+                    moves, log_path=output / "move_log.json")
+                n = sum(1 for r in records if r["ok"])
+                self.after(0, lambda: self._set_status(f"Moved {n} files", 1.0))
+            else:
+                self.after(0, lambda: self._set_status(
+                    f"Dry-run: {len(moves)} files would be moved", 1.0))
+            self.after(2000, lambda: self._set_status("Ready"))
+
+        threading.Thread(target=_work, daemon=True).start()
 
     def _run_in_thread(self, fn, *args, status="Working…"):
-        self._set_status(status)
+        self._set_status(status, 0.3)
         def _work():
             try:
-                msg = fn(*args)
-            except ImportError as e:
-                msg = str(e)
+                result = fn(*args)
+                msg = result if isinstance(result, str) else "Done"
             except Exception as e:
                 msg = f"Error: {e}"
-            self.after(0, lambda: self._set_status(msg or "Done"))
+            self.after(0, lambda: self._set_status(msg, 1.0))
+            self.after(3000, lambda: self._set_status("Ready"))
         threading.Thread(target=_work, daemon=True).start()
 
     def _tool_heic_convert(self):
-        if not self._scan_folder:
+        folder = self._scan_folder
+        if not folder:
+            messagebox.showinfo("HEIC", "Select a folder first.")
             return
         def _fn():
             from . import converter
-            converted = converter.batch_convert_heic(self._scan_folder)
-            return f"Converted {len(converted)} HEIC files"
+            results = converter.batch_convert_heic(folder)
+            return f"Converted {len(results)} HEIC files"
         self._run_in_thread(_fn, status="Converting HEIC…")
 
     def _tool_fix_rotation(self):
         def _fn():
             from . import converter
-            n = sum(1 for e in self._entries if e.file_type == "image"
-                    and _try(lambda: converter.fix_rotation(e.path)))
-            return f"Fixed rotation on {n} images"
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            done = 0
+            for e in targets:
+                try:
+                    converter.fix_rotation(e.path)
+                    done += 1
+                except Exception:
+                    pass
+            return f"Fixed rotation on {done} images"
         self._run_in_thread(_fn, status="Fixing rotation…")
 
     def _tool_strip_gps(self):
         def _fn():
             from . import converter
-            n = sum(1 for e in self._entries if e.file_type == "image"
-                    and _try(lambda: converter.strip_metadata(e.path, strip_gps_only=True)))
-            return f"Stripped GPS from {n} images"
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            done = 0
+            for e in targets:
+                try:
+                    converter.strip_metadata(e.path, strip_gps_only=True)
+                    done += 1
+                except Exception:
+                    pass
+            return f"Stripped GPS from {done} images"
         self._run_in_thread(_fn, status="Stripping GPS…")
 
     def _tool_strip_all(self):
         if not messagebox.askyesno("Strip Metadata",
-                                    "Remove ALL EXIF metadata from all images? This is irreversible."):
+                                    "Remove ALL EXIF/metadata from selected images?"
+                                    " This cannot be undone."):
             return
         def _fn():
             from . import converter
-            n = sum(1 for e in self._entries if e.file_type == "image"
-                    and _try(lambda: converter.strip_metadata(e.path)))
-            return f"Stripped metadata from {n} images"
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            done = 0
+            for e in targets:
+                try:
+                    converter.strip_metadata(e.path)
+                    done += 1
+                except Exception:
+                    pass
+            return f"Stripped metadata from {done} images"
         self._run_in_thread(_fn, status="Stripping metadata…")
 
     def _tool_auto_enhance(self):
         def _fn():
             from . import converter
-            n = sum(1 for e in self._entries if e.file_type == "image"
-                    and _try(lambda: converter.auto_enhance(e.path)))
-            return f"Enhanced {n} images"
-        self._run_in_thread(_fn, status="Enhancing images…")
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            done = 0
+            for e in targets:
+                try:
+                    converter.auto_enhance(e.path)
+                    done += 1
+                except Exception:
+                    pass
+            return f"Enhanced {done} images"
+        self._run_in_thread(_fn, status="Enhancing…")
 
     def _tool_blur_faces(self):
         def _fn():
-            from . import faces as f_mod
-            n = sum(1 for e in self._entries if e.file_type == "image"
-                    and _try(lambda: f_mod.blur_faces(e.path)))
-            return f"Blurred faces in {n} images"
+            from . import faces
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            done = 0
+            for e in targets:
+                try:
+                    n = faces.blur_faces(e.path)
+                    if n:
+                        done += 1
+                except Exception:
+                    pass
+            return f"Blurred faces in {done} images"
         self._run_in_thread(_fn, status="Blurring faces…")
 
     def _tool_remove_bg(self):
         def _fn():
             from . import converter
-            n = 0
-            for e in self._entries:
-                if e.file_type == "image":
-                    try:
-                        out = e.path.with_suffix(".nobg.png")
-                        converter.remove_background(e.path, out)
-                        n += 1
-                    except ImportError as ie:
-                        return str(ie)
-                    except Exception:
-                        pass
-            return f"Removed background from {n} images"
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            done = 0
+            for e in targets:
+                try:
+                    converter.remove_background(e.path)
+                    done += 1
+                except ImportError:
+                    return "rembg not installed. Run: pip install rembg"
+                except Exception:
+                    pass
+            return f"Removed background from {done} images"
         self._run_in_thread(_fn, status="Removing backgrounds…")
 
     def _tool_run_ocr(self):
         def _fn():
             from . import ocr
-            if not ocr.is_available():
-                return ("Tesseract not found. Download from "
-                        "https://tesseract-ocr.github.io/ and add to PATH.")
-            ocr.extract_all(self._entries)
-            n = sum(1 for e in self._entries if e.ocr_text)
-            return f"OCR complete: {n} files with text"
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            ocr.run_ocr_all(targets)
+            n = sum(1 for e in targets if e.ocr_text)
+            return f"OCR extracted text from {n} images"
         self._run_in_thread(_fn, status="Running OCR…")
 
     def _tool_batch_convert(self):
+        folder = self._scan_folder
+        if not folder:
+            messagebox.showinfo("Convert", "Select a folder first.")
+            return
         src = self._src_ext_var.get()
         dst = self._dst_ext_var.get()
-        if not self._scan_folder:
-            return
         def _fn():
             from . import converter
-            files = converter.batch_convert_format(self._scan_folder, src, dst)
-            return f"Converted {len(files)} {src.upper()} → {dst.upper()}"
+            results = converter.batch_convert_format(folder, src, dst)
+            return f"Converted {len(results)} {src.upper()} → {dst.upper()}"
         self._run_in_thread(_fn, status=f"Converting {src}→{dst}…")
 
     def _tool_batch_resize(self):
+        folder = self._scan_folder
+        if not folder:
+            messagebox.showinfo("Resize", "Select a folder first.")
+            return
         try:
             max_px = int(self._max_px_var.get())
         except ValueError:
-            messagebox.showerror("Resize", "Invalid max pixels value")
-            return
-        if not self._scan_folder:
+            messagebox.showerror("Resize", "Invalid max px value")
             return
         def _fn():
             from . import converter
-            files = converter.batch_resize(self._scan_folder, max_dimension=max_px)
-            return f"Resized {len(files)} images to max {max_px}px"
-        self._run_in_thread(_fn, status="Resizing images…")
+            results = converter.batch_resize(folder, max_dimension=max_px)
+            return f"Resized {len(results)} images to max {max_px}px"
+        self._run_in_thread(_fn, status="Resizing…")
 
     def _tool_score_quality(self):
         def _fn():
             from . import quality as qmod
-            qmod.score_all(self._entries)
+            sel = self._get_selected_entries()
+            targets = sel if sel else self._entries
+            qmod.score_all(targets)
             self.after(0, lambda: self._populate_tree(self._entries))
-            grades = {g: sum(1 for e in self._entries if e.quality_grade == g)
-                      for g in ("A", "B", "C", "D", "F")}
-            return "Quality: " + "  ".join(f"{g}:{n}" for g, n in grades.items() if n)
+            graded = sum(1 for e in targets if e.quality_grade)
+            return f"Scored {graded} images"
         self._run_in_thread(_fn, status="Scoring quality…")
 
     def _tool_detect_faces(self):
         def _fn():
-            from . import faces as f_mod
-            for e in self._entries:
-                f_mod.update_entry_face_count(e)
-            self.after(0, lambda: self._populate_tree(self._entries))
-            total = sum(e.face_count or 0 for e in self._entries)
-            return f"Detected {total} faces across {len(self._entries)} files"
+            from . import faces
+            sel = self._get_selected_entries()
+            targets = sel if sel else [e for e in self._entries if e.file_type == "image"]
+            for e in targets:
+                try:
+                    e.face_count = faces.count_faces(e.path)
+                except Exception:
+                    pass
+            with_faces = sum(1 for e in targets if e.face_count)
+            return f"Detected faces in {with_faces} images"
         self._run_in_thread(_fn, status="Detecting faces…")
 
     def _tool_watermark(self):
@@ -1088,7 +1101,7 @@ class App(tk.Tk):
             from . import ffmpeg_tools as ff
             out = ff.video_to_gif(e.path)
             return f"GIF → {out.name}"
-        self._run_in_thread(_fn, status="Making GIF…")
+        self._run_in_thread(_fn, status="Creating GIF…")
 
     def _tool_video_sheet(self):
         e = self._selected_entry
@@ -1133,12 +1146,11 @@ class App(tk.Tk):
 
     def _tool_app_sort(self):
         output = Path(self._output_var.get())
+        apply = self._apply_var.get()
         def _fn():
             from . import organizer
-            moves = organizer.sort_by_app_source(
-                self._entries, output, apply=self._apply_var.get())
-            return (f"Sorted {len(moves)} files by app source"
-                    + ("" if self._apply_var.get() else " (dry-run)"))
+            moves = organizer.sort_by_app_source(self._entries, output, apply=apply)
+            return f"{'Moved' if apply else 'Dry-run:'} {len(moves)} WhatsApp/TG/screenshot files"
         self._run_in_thread(_fn, status="Sorting by app source…")
 
     def _tool_fix_timestamps(self):
@@ -1153,30 +1165,27 @@ class App(tk.Tk):
             from . import repair
             corrupt = repair.scan_corrupt(self._entries)
             self.after(0, lambda: self._populate_tree(self._entries))
-            return f"Found {len(corrupt)} corrupted files (highlighted)"
-        self._run_in_thread(_fn, status="Scanning for corrupted files…")
+            return f"Found {len(corrupt)} corrupted files"
+        self._run_in_thread(_fn, status="Scanning for corruption…")
 
     def _tool_find_stale(self):
         def _fn():
             from . import repair
             stale = repair.find_stale(self._entries)
-            return (f"Found {len(stale)} stale files (no EXIF, old mtime). "
-                    "Use filter to search by date.")
+            return f"Found {len(stale)} stale files (no EXIF, old mtime)"
         self._run_in_thread(_fn, status="Finding stale files…")
 
     def _tool_undo(self):
         output = Path(self._output_var.get())
-        log = output / "move_log.json"
-        if not log.exists():
-            messagebox.showinfo("Undo", "No move log found.")
-            return
-        if not messagebox.askyesno("Undo", "Reverse the last organise run?"):
+        log_path = output / "move_log.json"
+        if not log_path.exists():
+            messagebox.showinfo("Undo", "No move_log.json found in output folder.")
             return
         def _fn():
             from . import organizer
-            records = organizer.undo_last_run(log)
-            ok = sum(1 for r in records if r["ok"])
-            return f"Undone: {ok}/{len(records)} moves reversed"
+            records = organizer.undo_last_run(log_path)
+            n = sum(1 for r in records if r["ok"])
+            return f"Undone {n} moves"
         self._run_in_thread(_fn, status="Undoing last run…")
 
     def _tool_secure_delete(self):
@@ -1184,55 +1193,57 @@ class App(tk.Tk):
         if not sel:
             messagebox.showinfo("Secure Delete", "Select files in the list first.")
             return
+        names = ", ".join(e.path.name for e in sel[:3])
+        if len(sel) > 3:
+            names += f" +{len(sel)-3} more"
         if not messagebox.askyesno("Secure Delete",
-                                    f"Securely overwrite and delete {len(sel)} file(s)? "
-                                    "This CANNOT be undone."):
+                                    f"Permanently shred {len(sel)} file(s)?\n{names}"):
             return
         def _fn():
             from . import repair
-            n = sum(1 for e in sel if repair.secure_delete(e.path))
-            self._entries = [e for e in self._entries if e not in sel]
-            self.after(0, lambda: self._populate_tree(self._entries))
-            return f"Securely deleted {n} files"
-        self._run_in_thread(_fn, status="Secure deleting…")
-
-    # ── Toggle watch ──────────────────────────────────────────────────────────
+            done = sum(1 for e in sel if repair.secure_delete(e.path))
+            return f"Securely deleted {done} files"
+        self._run_in_thread(_fn, status="Shredding files…")
 
     def _toggle_watch(self):
-        if self._watcher and self._watcher.is_running:
-            self._watcher.stop()
+        if self._watcher:
+            try:
+                self._watcher.stop()
+            except Exception:
+                pass
             self._watcher = None
-            self._watch_btn.configure(bg=BG2, text="👁 Watch")
-            self._set_status("Watch mode off")
+            self._watch_btn.configure(text="👁 Start Watch Folder")
+            self._watch_status.configure(text="")
             return
         if not self._scan_folder:
-            self._browse()
-            if not self._scan_folder:
-                return
+            messagebox.showinfo("Watch", "Select a folder first.")
+            return
         try:
-            from .watcher import FolderWatcher
-            self._watcher = FolderWatcher(self._scan_folder, self._on_new_file)
+            from . import watcher as w
+            self._watcher = w.FolderWatcher(
+                self._scan_folder, callback=self._on_new_file)
             self._watcher.start()
-            self._watch_btn.configure(bg=GREEN, text="● Watching")
-            self._set_status(f"Watching {self._scan_folder}")
+            self._watch_btn.configure(text="⏹ Stop Watch Folder")
+            self._watch_status.configure(text=f"Watching: {self._scan_folder}")
         except ImportError:
-            messagebox.showinfo("Watch Mode",
-                                "watchdog not installed. Run: pip install watchdog")
+            messagebox.showerror("Watch",
+                                  "watchdog not installed. Run: pip install watchdog")
+        except Exception as e:
+            messagebox.showerror("Watch", str(e))
 
     def _on_new_file(self, path: Path):
-        from . import scanner, health, quality as qmod
-        entry = scanner.scan(path.parent, recursive=False)
-        matching = [e for e in entry if e.path == path]
-        if not matching:
+        from . import scanner, health, quality as qmod, analyzer
+        entries = scanner.scan(path.parent, recursive=False)
+        new = [e for e in entries if e.path == path]
+        if not new:
             return
-        e = matching[0]
-        health.check(e)
-        qmod.score_entry(e)
-        self._entries.append(e)
+        entry = new[0]
+        health.check(entry)
+        qmod.score_entry(entry)
+        analyzer.analyze_entry(entry)
+        self._entries.append(entry)
         self.after(0, lambda: self._populate_tree(self._entries))
         self.after(0, lambda: self._set_status(f"New file: {path.name}"))
-
-    # ── Export handlers ───────────────────────────────────────────────────────
 
     def _export_json(self):
         out = filedialog.asksaveasfilename(
@@ -1240,39 +1251,47 @@ class App(tk.Tk):
             filetypes=[("JSON", "*.json")],
             initialfile="manifest.json",
         )
-        if out:
-            from . import exporter
-            exporter.export_json(self._entries, Path(out))
-            self._set_status(f"JSON saved → {Path(out).name}")
+        if not out:
+            return
+        from . import exporter
+        exporter.export_json(self._entries, Path(out))
+        self._set_status(f"Manifest → {Path(out).name}")
 
     def _export_csv(self):
         out = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV", "*.csv")],
-            initialfile="media.csv",
+            initialfile="spreadsheet.csv",
         )
-        if out:
-            from . import exporter
-            exporter.export_csv(self._entries, Path(out))
-            self._set_status(f"CSV saved → {Path(out).name}")
+        if not out:
+            return
+        from . import exporter
+        exporter.export_csv(self._entries, Path(out))
+        self._set_status(f"CSV → {Path(out).name}")
 
     def _export_html(self):
-        out = filedialog.askdirectory(title="Save HTML gallery to folder…")
-        if out:
-            from . import exporter
-            result = exporter.export_html(self._entries, Path(out))
-            self._set_status(f"HTML gallery → {result}")
+        out = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            filetypes=[("HTML", "*.html")],
+            initialfile="gallery.html",
+        )
+        if not out:
+            return
+        from . import exporter
+        exporter.export_html_gallery(self._entries, Path(out))
+        self._set_status(f"Gallery → {Path(out).name}")
 
     def _export_map(self):
         out = filedialog.asksaveasfilename(
             defaultextension=".html",
             filetypes=[("HTML", "*.html")],
-            initialfile="gps_map.html",
+            initialfile="map.html",
         )
-        if out:
-            from . import mapview
-            mapview.export_map(self._entries, Path(out))
-            self._set_status(f"Map saved → {Path(out).name}")
+        if not out:
+            return
+        from . import mapview
+        mapview.export_map(self._entries, Path(out))
+        self._set_status(f"Map → {Path(out).name}")
 
     def _export_contact_sheet(self):
         out = filedialog.asksaveasfilename(
@@ -1284,9 +1303,8 @@ class App(tk.Tk):
             return
         def _fn():
             from . import contact_sheet as cs
-            cs.make_contact_sheet(self._entries, Path(out),
-                                   title=str(self._scan_folder or ""))
-            return f"Contact sheet → {Path(out).name}"
+            cs.make_contact_sheet(self._entries, Path(out))
+            return f"Contact sheet → {Path(out).rsplit('/', 1)[-1]}"
         self._run_in_thread(_fn, status="Building contact sheet…")
 
     def _export_calendar(self):
@@ -1329,8 +1347,16 @@ class App(tk.Tk):
         Path(out).write_text(html, encoding="utf-8")
         self._set_status(f"Calendar → {Path(out).name}")
 
+    def _launch_dupe_finder(self):
+        try:
+            from .dupe_finder import App as DupeApp
+            win = tk.Toplevel(self)
+            DupeApp(win)
+        except Exception as e:
+            messagebox.showerror("Dupe Finder", str(e))
 
-# ── Lightbox window ───────────────────────────────────────────────────────────
+
+# ── Lightbox window ──────────────────────────────────────────────────────────────────────────────────
 
 class Lightbox(tk.Toplevel):
     def __init__(self, master, entries, current):
@@ -1400,7 +1426,7 @@ class Lightbox(tk.Toplevel):
                                           text=f"Preview error: {ex}", fill=FG2)
         else:
             self._canvas.create_text(cw // 2, ch // 2,
-                                      text=f"🎬 {e.path.name}", fill=FG2,
+                                      text=f"🎦 {e.path.name}", fill=FG2,
                                       font=("Segoe UI", 16))
 
         grade = f" [{e.quality_grade}]" if e.quality_grade else ""
@@ -1433,29 +1459,37 @@ class Lightbox(tk.Toplevel):
             self._load()
 
     def _mark_delete(self):
+        if not self._entries:
+            return
         e = self._entries[self._idx]
-        e.metadata["marked_delete"] = True
-        self._overlay.configure(fg=RED)
-        self._nav(1)
+        e.health_ok = False
+        if "Marked for deletion" not in e.health_issues:
+            e.health_issues.append("Marked for deletion")
+        self._overlay.configure(text=f"🗑 MARKED  {e.path.name}", fg=RED)
 
     def _mark_keep(self):
+        if not self._entries:
+            return
         e = self._entries[self._idx]
-        e.metadata.pop("marked_delete", None)
-        self._overlay.configure(fg=GREEN)
+        e.health_issues = [i for i in e.health_issues if i != "Marked for deletion"]
+        e.health_ok = len(e.health_issues) == 0
+        self._overlay.configure(text=f"✓ KEPT  {e.path.name}", fg=GREEN)
 
     def _rotate(self):
+        if not self._entries:
+            return
         e = self._entries[self._idx]
         if e.file_type != "image":
             return
         try:
             from . import converter
             converter.fix_rotation(e.path)
-        except Exception:
-            pass
-        self._load()
+            self._load()
+        except Exception as ex:
+            messagebox.showerror("Rotate", str(ex))
 
 
-# ── Rename preview window ──────────────────────────────────────────────────────
+# ── Rename preview window ─────────────────────────────────────────────────────────────────────────────
 
 class RenamePreview(tk.Toplevel):
     def __init__(self, master, entries):
@@ -1530,7 +1564,7 @@ class RenamePreview(tk.Toplevel):
         self._do_rename(list(self._tree.selection()))
 
 
-# ── Utility ────────────────────────────────────────────────────────────────────
+# ── Utility ──────────────────────────────────────────────────────────────────────────────────────
 
 def _try(fn) -> bool:
     try:
