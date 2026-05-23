@@ -1,88 +1,106 @@
-"""Storage and health report generation."""
+"""
+Storage reports: size breakdown, top-N largest, duplicate savings, health summary.
+"""
+
 from __future__ import annotations
+from collections import defaultdict
+from typing import TYPE_CHECKING
 
-from pathlib import Path
+if TYPE_CHECKING:
+    from .scanner import FileEntry
+    from .duplicates import DuplicateGroup
 
-from .scanner import FileEntry
+
+def _human(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
 
 
-def generate(entries: list[FileEntry], duplicate_groups: dict) -> dict:
-    total_size = sum(e.size_bytes for e in entries)
-
-    by_type: dict[str, dict] = {}
+def storage_report(entries: list["FileEntry"]) -> dict:
+    total_bytes = sum(e.size_bytes for e in entries)
+    by_type: dict[str, int] = defaultdict(int)
+    by_type_count: dict[str, int] = defaultdict(int)
     for e in entries:
-        t = e.file_type
-        if t not in by_type:
-            by_type[t] = {'count': 0, 'size': 0}
-        by_type[t]['count'] += 1
-        by_type[t]['size'] += e.size_bytes
+        by_type[e.file_type] += e.size_bytes
+        by_type_count[e.file_type] += 1
 
-    unhealthy = [e for e in entries if not e.health_ok]
-    duplicates = [e for e in entries if e.is_duplicate]
-
-    recoverable = 0
-    for group in duplicate_groups.values():
-        sorted_group = sorted(group, key=lambda e: e.size_bytes)
-        recoverable += sum(e.size_bytes for e in sorted_group[1:])
-
-    largest = sorted(entries, key=lambda e: e.size_bytes, reverse=True)[:10]
+    top10 = sorted(entries, key=lambda e: e.size_bytes, reverse=True)[:10]
 
     return {
-        'total_files': len(entries),
-        'total_size_bytes': total_size,
-        'by_type': by_type,
-        'unhealthy_count': len(unhealthy),
-        'unhealthy_files': [str(e.path) for e in unhealthy],
-        'duplicate_count': len(duplicates),
-        'duplicate_groups': len(duplicate_groups),
-        'recoverable_bytes': recoverable,
-        'largest_files': [{'path': str(e.path), 'size': e.size_bytes} for e in largest],
+        "total_files": len(entries),
+        "total_bytes": total_bytes,
+        "total_human": _human(total_bytes),
+        "by_type": {
+            t: {"bytes": b, "human": _human(b), "count": by_type_count[t]}
+            for t, b in sorted(by_type.items(), key=lambda x: -x[1])
+        },
+        "top10_largest": [
+            {"path": str(e.path), "size": e.size_bytes, "human": _human(e.size_bytes)}
+            for e in top10
+        ],
     }
 
 
-def _human(b: float) -> str:
-    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
-        if b < 1024:
-            return f'{b:.1f} {unit}'
-        b /= 1024
-    return f'{b:.1f} PB'
+def duplicate_report(groups: list["DuplicateGroup"]) -> dict:
+    wasted = sum(g.wasted_bytes for g in groups)
+    return {
+        "total_groups": len(groups),
+        "exact_groups": sum(1 for g in groups if g.kind == "exact"),
+        "near_groups": sum(1 for g in groups if g.kind == "near"),
+        "wasted_bytes": wasted,
+        "wasted_human": _human(wasted),
+    }
 
 
-def format_report(report: dict) -> str:
-    sep = '=' * 52
-    lines = [
-        sep,
-        '  MEDIA ORGANIZER  --  STORAGE REPORT',
-        sep,
-        f"  Total files   : {report['total_files']:,}",
-        f"  Total size    : {_human(report['total_size_bytes'])}",
-        '',
-        '  By type:',
-    ]
+def health_report(entries: list["FileEntry"]) -> dict:
+    ok = [e for e in entries if e.health_ok]
+    bad = [e for e in entries if not e.health_ok]
+    return {
+        "healthy": len(ok),
+        "unhealthy": len(bad),
+        "issues": [
+            {"path": str(e.path), "issues": e.health_issues}
+            for e in bad
+        ],
+    }
 
-    max_size = max((v['size'] for v in report['by_type'].values()), default=1)
-    for t, info in sorted(report['by_type'].items(), key=lambda x: -x[1]['size']):
-        pct = info['size'] / max(report['total_size_bytes'], 1) * 100
-        filled = int(info['size'] / max_size * 20)
-        bar = ('█' * filled).ljust(20, '░')
-        lines.append(f"    {t:<12} {info['count']:>5} files  {_human(info['size']):>10}  {bar} {pct:.0f}%")
 
-    lines += [
-        '',
-        f"  Unhealthy files   : {report['unhealthy_count']}",
-        f"  Duplicate groups  : {report['duplicate_groups']} ({report['duplicate_count']} files)",
-        f"  Recoverable space : {_human(report['recoverable_bytes'])}",
-        '',
-        '  Top 10 largest files:',
-    ]
-    for item in report['largest_files']:
-        p = Path(item['path'])
-        lines.append(f"    {_human(item['size']):>10}  {p.name}")
+def print_report(
+    entries: list["FileEntry"],
+    groups: list["DuplicateGroup"] | None = None,
+) -> None:
+    sr = storage_report(entries)
+    hr = health_report(entries)
 
-    if report['unhealthy_files']:
-        lines += ['', '  Unhealthy files:']
-        for f in report['unhealthy_files'][:20]:
-            lines.append(f'    {f}')
+    print(f"\n{'='*60}")
+    print(f"  MEDIA ORGANIZER — SCAN REPORT")
+    print(f"{'='*60}")
+    print(f"  Total files : {sr['total_files']:,}")
+    print(f"  Total size  : {sr['total_human']}")
+    print(f"\n  By type:")
+    for t, info in sr["by_type"].items():
+        bar = "█" * min(int(info["bytes"] / max(sr["total_bytes"], 1) * 30), 30)
+        print(f"    {t:<12} {bar:<30} {info['human']:>8}  ({info['count']} files)")
 
-    lines.append(sep)
-    return '\n'.join(lines)
+    print(f"\n  Top 10 largest files:")
+    for item in sr["top10_largest"]:
+        print(f"    {item['human']:>8}  {item['path']}")
+
+    print(f"\n  Health:")
+    print(f"    Healthy   : {hr['healthy']}")
+    print(f"    Unhealthy : {hr['unhealthy']}")
+    for issue in hr["issues"][:5]:
+        print(f"    ⚠  {issue['path']}: {', '.join(issue['issues'])}")
+    if len(hr["issues"]) > 5:
+        print(f"    … and {len(hr['issues']) - 5} more")
+
+    if groups is not None:
+        dr = duplicate_report(groups)
+        print(f"\n  Duplicates:")
+        print(f"    Groups     : {dr['total_groups']} ({dr['exact_groups']} exact, {dr['near_groups']} near)")
+        print(f"    Recoverable: {dr['wasted_human']}")
+
+    print(f"{'='*60}\n")

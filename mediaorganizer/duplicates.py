@@ -1,115 +1,162 @@
-"""Exact (MD5) and near-duplicate (perceptual hash) detection."""
+"""
+Duplicate detection:
+- Exact duplicates: MD5 hash match
+- Near-duplicate images/videos: perceptual hash (phash) with configurable threshold
+"""
+
 from __future__ import annotations
 
-import hashlib
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from .scanner import FileEntry
-
-
-def compute_md5(path: Path) -> str:
-    h = hashlib.md5()
-    try:
-        with open(path, 'rb') as f:
-            for chunk in iter(lambda: f.read(65536), b''):
-                h.update(chunk)
-        return h.hexdigest()
-    except OSError:
-        return ''
+if TYPE_CHECKING:
+    from .scanner import FileEntry
 
 
-def _image_phash(path: Path):
+@dataclass
+class DuplicateGroup:
+    group_id: int
+    kind: str           # "exact" or "near"
+    entries: list["FileEntry"]
+
+    @property
+    def keep(self) -> "FileEntry":
+        # Keep the largest (highest quality) copy, or first if equal
+        return max(self.entries, key=lambda e: e.size_bytes)
+
+    @property
+    def removable(self) -> list["FileEntry"]:
+        return [e for e in self.entries if e is not self.keep]
+
+    @property
+    def wasted_bytes(self) -> int:
+        return sum(e.size_bytes for e in self.removable)
+
+
+def _compute_phash(entry: "FileEntry") -> Optional[str]:
+    if entry.phash:
+        return entry.phash
     try:
         import imagehash
         from PIL import Image
-        return imagehash.phash(Image.open(path))
+        img = Image.open(entry.path)
+        entry.phash = str(imagehash.phash(img))
+        return entry.phash
     except Exception:
         return None
 
 
-def _video_phash(path: Path):
+def _phash_distance(h1: str, h2: str) -> int:
+    try:
+        import imagehash
+        return imagehash.hex_to_hash(h1) - imagehash.hex_to_hash(h2)
+    except Exception:
+        return 999
+
+
+def _video_keyframe(path: Path):
+    """Return a PIL image of a keyframe from the video, or None."""
     try:
         import cv2
-        import imagehash
+        import numpy as np
         from PIL import Image
         cap = cv2.VideoCapture(str(path))
         if not cap.isOpened():
             return None
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(fps * 5))
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            ret, frame = cap.read()
+        total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        target = min(int(total * 0.1), 30)  # 10% in, max frame 30
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target)
+        ok, frame = cap.read()
         cap.release()
-        if not ret:
+        if not ok:
             return None
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return imagehash.phash(Image.fromarray(rgb))
+        return Image.fromarray(rgb)
     except Exception:
         return None
 
 
-def _near_dupe_pass(
-    entries: list[FileEntry],
-    hash_fn,
-    prefix: str,
-    threshold: int,
-    out: dict[str, list[FileEntry]],
-) -> None:
-    pairs: list[tuple[FileEntry, object]] = []
-    for e in entries:
-        h = hash_fn(e.path)
-        if h is not None:
-            pairs.append((e, h))
-
-    used: set[int] = set()
-    for i, (e1, h1) in enumerate(pairs):
-        if i in used:
-            continue
-        group = [e1]
-        for j, (e2, h2) in enumerate(pairs):
-            if j <= i or j in used:
-                continue
-            if (h1 - h2) <= threshold:
-                group.append(e2)
-                used.add(j)
-        if len(group) > 1:
-            used.add(i)
-            key = f'{prefix}_near_{i}'
-            out[key] = group
-            for e in group:
-                e.is_duplicate = True
-                e.duplicate_group = key
+def _compute_video_phash(entry: "FileEntry") -> Optional[str]:
+    if entry.phash:
+        return entry.phash
+    try:
+        import imagehash
+        img = _video_keyframe(entry.path)
+        if img is None:
+            return None
+        entry.phash = str(imagehash.phash(img))
+        return entry.phash
+    except Exception:
+        return None
 
 
 def find_duplicates(
-    entries: list[FileEntry],
+    entries: list["FileEntry"],
     phash_threshold: int = 10,
-) -> dict[str, list[FileEntry]]:
-    """Return groups dict: group_key -> list[FileEntry]. Only groups with 2+ members included."""
-    md5_groups: dict[str, list[FileEntry]] = {}
+) -> list[DuplicateGroup]:
+    """Return duplicate groups. Mutates entry.md5 and entry.phash as a side effect."""
+    from .scanner import compute_md5
+
+    groups: list[DuplicateGroup] = []
+    gid = 0
+
+    # --- Exact duplicates by MD5 ---
+    md5_buckets: dict[str, list["FileEntry"]] = defaultdict(list)
     for e in entries:
-        if e.size_bytes == 0:
-            continue
-        h = compute_md5(e.path)
-        if not h:
-            continue
-        e.content_hash = h
-        md5_groups.setdefault(h, []).append(e)
+        compute_md5(e)
+        if e.md5:
+            md5_buckets[e.md5].append(e)
 
-    result: dict[str, list[FileEntry]] = {}
-    for h, group in md5_groups.items():
-        if len(group) > 1:
-            key = f'exact_{h[:8]}'
-            result[key] = group
-            for e in group:
-                e.is_duplicate = True
-                e.duplicate_group = key
+    exact_paths: set[Path] = set()
+    for md5, dupes in md5_buckets.items():
+        if len(dupes) > 1:
+            groups.append(DuplicateGroup(group_id=gid, kind="exact", entries=dupes))
+            gid += 1
+            for e in dupes:
+                exact_paths.add(e.path)
 
-    images = [e for e in entries if e.file_type == 'image' and not e.is_duplicate]
-    videos = [e for e in entries if e.file_type == 'video' and not e.is_duplicate]
-    _near_dupe_pass(images, _image_phash, 'img', phash_threshold, result)
-    _near_dupe_pass(videos, _video_phash, 'vid', phash_threshold, result)
-    return result
+    # --- Near-duplicates (images and videos) by phash ---
+    visual = [
+        e for e in entries
+        if e.file_type in ("image", "video") and e.path not in exact_paths
+    ]
+
+    # Compute phashes
+    for e in visual:
+        if e.file_type == "image":
+            _compute_phash(e)
+        else:
+            _compute_video_phash(e)
+
+    # Group by phash similarity (simple O(n²) for typical collection sizes)
+    clustered: set[int] = set()
+    for i, a in enumerate(visual):
+        if i in clustered or not a.phash:
+            continue
+        cluster = [a]
+        for j, b in enumerate(visual):
+            if j <= i or j in clustered or not b.phash:
+                continue
+            if _phash_distance(a.phash, b.phash) <= phash_threshold:
+                cluster.append(b)
+                clustered.add(j)
+        if len(cluster) > 1:
+            clustered.add(i)
+            groups.append(DuplicateGroup(group_id=gid, kind="near", entries=cluster))
+            gid += 1
+
+    return groups
+
+
+def summary(groups: list[DuplicateGroup]) -> dict:
+    total_exact = sum(1 for g in groups if g.kind == "exact")
+    total_near = sum(1 for g in groups if g.kind == "near")
+    wasted = sum(g.wasted_bytes for g in groups)
+    return {
+        "exact_groups": total_exact,
+        "near_groups": total_near,
+        "total_groups": len(groups),
+        "wasted_bytes": wasted,
+    }

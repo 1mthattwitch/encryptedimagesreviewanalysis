@@ -1,109 +1,211 @@
-"""Command-line entry point for mediaorganizer."""
+"""
+Command-line interface for mediaorganizer.
+
+Usage:
+  python -m mediaorganizer PATH [options]
+
+  --recursive / --no-recursive  (default: recursive)
+  --check-health                run health checks
+  --find-duplicates             find exact + near duplicates
+  --analyze                     AI describe + categorize (requires Ollama)
+  --no-ai                       use heuristics only (skip Ollama)
+  --storage-report              print storage breakdown
+  --mode {type,date,content,event}
+  --apply                       execute moves (default: dry-run)
+  --output DIR                  where to move files (default: ./Organized)
+  --export-json FILE
+  --export-csv FILE
+  --export-html DIR
+  --export-map FILE             GPS HTML map
+  --quality                     score photo quality
+  --faces                       detect + count faces
+  --ocr                         extract text from images (Tesseract)
+  --fix-rotation                apply EXIF orientation physically
+  --strip-gps                   remove GPS tags
+  --heic-convert                convert HEIC→JPG
+  --fix-timestamps              sync file mtime to EXIF date
+  --ollama-host URL             (default: http://localhost:11434)
+"""
+
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
 
-from . import scanner, health, duplicates, analyzer, organizer, reporter, exporter
 
-
-def main() -> None:
-    p = argparse.ArgumentParser(
-        prog='mediaorganizer',
-        description='Offline media organizer — scan, analyze, rename, and organize your files.',
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="mediaorganizer",
+        description="Offline media scanner, AI renamer, and organiser",
     )
-    p.add_argument('path', nargs='?', default='.', help='Directory to scan (default: current dir)')
-    p.add_argument('-r', '--recursive', action='store_true', default=True)
-    p.add_argument('--apply', action='store_true', help='Actually move files (default: dry-run)')
-    p.add_argument('--mode', choices=['type', 'date', 'content'], default='type',
-                   help='Organization mode (default: type)')
-    p.add_argument('--output', default='./Organized', metavar='DIR')
-    p.add_argument('--check-health', action='store_true')
-    p.add_argument('--find-duplicates', action='store_true')
-    p.add_argument('--storage-report', action='store_true')
-    p.add_argument('--analyze', action='store_true', help='Run Ollama analysis')
-    p.add_argument('--export-manifest', metavar='FILE.json')
-    p.add_argument('--export-csv', metavar='FILE.csv')
-    p.add_argument('--export-gallery', metavar='DIR')
-    p.add_argument('--ollama-host', default='http://localhost:11434')
-    args = p.parse_args()
+    parser.add_argument("path", type=Path, help="Folder to scan")
+    parser.add_argument("-r", "--recursive", action="store_true", default=True)
+    parser.add_argument("--no-recursive", dest="recursive", action="store_false")
+    parser.add_argument("--check-health", action="store_true")
+    parser.add_argument("--find-duplicates", action="store_true")
+    parser.add_argument("--analyze", action="store_true",
+                        help="AI describe and categorize (Ollama)")
+    parser.add_argument("--no-ai", action="store_true",
+                        help="Use heuristics only, skip Ollama")
+    parser.add_argument("--storage-report", action="store_true")
+    parser.add_argument("--mode", choices=["type", "date", "content", "event"],
+                        default="type")
+    parser.add_argument("--apply", action="store_true",
+                        help="Execute moves (default: dry-run)")
+    parser.add_argument("--output", type=Path, default=Path("./Organized"))
+    parser.add_argument("--export-json", type=Path)
+    parser.add_argument("--export-csv", type=Path)
+    parser.add_argument("--export-html", type=Path)
+    parser.add_argument("--export-map", type=Path)
+    parser.add_argument("--quality", action="store_true")
+    parser.add_argument("--faces", action="store_true")
+    parser.add_argument("--ocr", action="store_true")
+    parser.add_argument("--fix-rotation", action="store_true")
+    parser.add_argument("--strip-gps", action="store_true")
+    parser.add_argument("--heic-convert", action="store_true")
+    parser.add_argument("--fix-timestamps", action="store_true")
+    parser.add_argument("--ollama-host", default="http://localhost:11434")
 
-    root = Path(args.path).resolve()
-    if not root.is_dir():
-        print(f'Error: {root} is not a directory', file=sys.stderr)
+    args = parser.parse_args(argv)
+    folder = args.path.resolve()
+
+    if not folder.is_dir():
+        print(f"Error: {folder} is not a directory", file=sys.stderr)
         sys.exit(1)
 
-    print(f'Scanning {root} ...')
-    entries = scanner.scan(root, recursive=args.recursive)
-    print(f'Found {len(entries)} files.')
+    from . import scanner, health, duplicates, analyzer, organizer, reporter, exporter
+
+    print(f"Scanning {folder} …")
+    entries = scanner.scan(folder, recursive=args.recursive)
+    print(f"Found {len(entries)} files")
 
     if args.check_health:
-        print('Checking health...')
+        print("Running health checks …")
+        health.check_all(entries)
+
+    if args.heic_convert:
+        from . import converter
+        print("Converting HEIC → JPG …")
+        converted = converter.batch_convert_heic(folder)
+        print(f"  Converted {len(converted)} files")
+        # Re-scan to include new JPGs
+        entries = scanner.scan(folder, recursive=args.recursive)
+
+    if args.fix_rotation:
+        from . import converter
+        print("Fixing EXIF rotation …")
+        count = 0
         for e in entries:
-            result = health.check(e)
-            e.health_ok = result.ok
-            e.health_issues = result.issues
-        bad = sum(1 for e in entries if not e.health_ok)
-        print(f'  {bad} unhealthy files found.')
+            if e.file_type == "image" and e.mime_ext in ("jpg", "jpeg"):
+                try:
+                    converter.fix_rotation(e.path)
+                    count += 1
+                except Exception:
+                    pass
+        print(f"  Fixed rotation on {count} images")
 
-    dup_groups: dict = {}
-    if args.find_duplicates:
-        print('Finding duplicates...')
-        dup_groups = duplicates.find_duplicates(entries)
-        print(f'  Found {len(dup_groups)} duplicate groups.')
+    if args.strip_gps:
+        from . import converter
+        print("Stripping GPS metadata …")
+        count = 0
+        for e in entries:
+            if e.file_type == "image":
+                try:
+                    converter.strip_metadata(e.path, strip_gps_only=True)
+                    count += 1
+                except Exception:
+                    pass
+        print(f"  Stripped GPS from {count} images")
 
-    ai = analyzer.OllamaAnalyzer(host=args.ollama_host)
-    if args.analyze or args.mode == 'content':
-        if not ai.is_available():
-            print('Warning: Ollama not available — using heuristic names.')
+    if args.quality:
+        from . import quality
+        print("Scoring image quality …")
+        quality.score_all(entries)
+        graded = {g: sum(1 for e in entries if e.quality_grade == g)
+                  for g in ("A", "B", "C", "D", "F")}
+        for g, n in graded.items():
+            if n:
+                print(f"  Grade {g}: {n}")
+
+    if args.faces:
+        from . import faces
+        print("Detecting faces …")
+        for e in entries:
+            faces.update_entry_face_count(e)
+        total_faces = sum(e.face_count or 0 for e in entries)
+        print(f"  Detected {total_faces} faces across {len(entries)} files")
+
+    if args.ocr:
+        from . import ocr
+        if ocr.is_available():
+            print("Running OCR …")
+            ocr.extract_all(entries)
         else:
-            print('Analyzing with Ollama...')
+            print("OCR skipped: Tesseract not found. "
+                  "Install from https://tesseract-ocr.github.io/")
 
-        def _prog(i: int, total: int, name: str) -> None:
-            print(f'  [{i + 1}/{total}] {name}', end='\r')
-
-        analyzer.analyze_entries(entries, ai,
-                                 need_category=(args.mode == 'content'),
-                                 progress_cb=_prog)
+    if args.analyze:
+        use_ai = not args.no_ai
+        print(f"Analyzing files (AI={'Ollama' if use_ai else 'heuristics'}) …")
+        def _cb(i, t): print(f"  {i}/{t}", end="\r")
+        analyzer.analyze_all(entries, host=args.ollama_host,
+                              use_ai=use_ai, progress_cb=_cb)
         print()
 
-    report = reporter.generate(entries, dup_groups)
+    if args.find_duplicates:
+        print("Finding duplicates …")
+        groups = duplicates.find_duplicates(entries)
+        dr = reporter.duplicate_report(groups)
+        print(f"  Groups: {dr['total_groups']} ({dr['exact_groups']} exact, "
+              f"{dr['near_groups']} near)")
+        print(f"  Recoverable space: {dr['wasted_human']}")
+    else:
+        groups = []
 
     if args.storage_report:
-        print(reporter.format_report(report))
+        reporter.print_report(entries, groups if args.find_duplicates else None)
 
-    if args.export_manifest:
-        out = Path(args.export_manifest)
-        exporter.export_json(entries, report, out)
-        print(f'Manifest: {out}')
+    if args.fix_timestamps:
+        from . import repair
+        n = repair.fix_all_timestamps(entries)
+        print(f"Fixed timestamps on {n} files")
+
+    # Organise
+    if args.mode or args.apply:
+        log_path = args.output / "move_log.json"
+        moves = organizer.plan_moves(entries, args.output, mode=args.mode)
+        print(f"\nOrganise plan ({args.mode} mode): {len(moves)} moves")
+        if not args.apply:
+            print("  (dry-run — pass --apply to execute)")
+            for entry, dest in moves[:20]:
+                print(f"  {entry.path.name} → {dest.relative_to(args.output)}")
+            if len(moves) > 20:
+                print(f"  … and {len(moves) - 20} more")
+        else:
+            print("  Executing …")
+            records = organizer.apply_moves(moves, log_path=log_path)
+            ok = sum(1 for r in records if r["ok"])
+            fail = len(records) - ok
+            print(f"  Moved {ok} files" + (f", {fail} failed" if fail else ""))
+
+    # Exports
+    if args.export_json:
+        exporter.export_json(entries, args.export_json)
+        print(f"JSON manifest → {args.export_json}")
     if args.export_csv:
-        out = Path(args.export_csv)
-        exporter.export_csv(entries, out)
-        print(f'CSV: {out}')
-    if args.export_gallery:
-        out = Path(args.export_gallery)
-        exporter.export_html(entries, report, out)
-        print(f'Gallery: {out / "index.html"}')
+        exporter.export_csv(entries, args.export_csv)
+        print(f"CSV → {args.export_csv}")
+    if args.export_html:
+        out = exporter.export_html(entries, args.export_html)
+        print(f"HTML gallery → {out}")
+    if args.export_map:
+        from . import mapview
+        mapview.export_map(entries, args.export_map)
+        print(f"GPS map → {args.export_map}")
 
-    out_dir = Path(args.output).resolve()
-    moves = organizer.plan_moves(entries, out_dir, args.mode)
-    if args.apply:
-        print(f'Moving {len(moves)} files to {out_dir} ...')
-        results = organizer.apply_moves(moves, dry_run=False)
-        ok = sum(1 for _, _, success, _ in results if success)
-        print(f'Done: {ok}/{len(moves)} files moved.')
-    else:
-        print(f'\nDry-run — {len(moves)} proposed moves (pass --apply to execute):')
-        for entry, dest in moves[:25]:
-            try:
-                rel = dest.relative_to(out_dir.parent)
-            except ValueError:
-                rel = dest
-            print(f'  {entry.path.name:<40}  ->  {rel}')
-        if len(moves) > 25:
-            print(f'  ... and {len(moves) - 25} more')
+    print("\nDone.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

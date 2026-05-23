@@ -1,8 +1,15 @@
 Pillow>=10.0
+pillow-heif>=0.13
 PyMuPDF>=1.23
 python-docx>=1.1
-imagehash>=4.3
-opencv-python-headless>=4.8
-numpy>=1.24
-requests>=2.31
 odfpy>=1.4
+imagehash>=4.3
+opencv-python-headless>=4.8,<4.10
+numpy>=1.24,<2.0
+requests>=2.31
+# Optional extras — install manually as needed:
+# watchdog>=3.0          # watch-folder mode
+# pytesseract>=0.3       # OCR (also needs Tesseract binary from tesseract-ocr.github.io)
+# openai-whisper>=20231117  # video transcription
+# rembg>=2.0             # background removal
+# folium>=0.15           # GPS map view
