@@ -189,7 +189,7 @@ echo  ============================================================
 echo.
 
 :: --- 1. Find Python -------------------------------------------------------
-echo [1/4] Finding Python...
+echo [1/5] Finding Python...
 
 set PYTHON=
 
@@ -239,7 +239,7 @@ echo   Using: %PYTHON%
 echo.
 
 :: --- 2. Virtual environment -----------------------------------------------
-echo [2/4] Setting up virtual environment...
+echo [2/5] Setting up virtual environment...
 if not exist ".venv\Scripts\activate.bat" (
     echo   Creating .venv for the first time...
     "%PYTHON%" -m venv .venv
@@ -258,7 +258,7 @@ echo   Virtual environment active.
 echo.
 
 :: --- 3. Auto-update from GitHub -------------------------------------------
-echo [3/4] Checking for updates...
+echo [3/5] Checking for updates...
 
 :: Read optional GitHub token for private repo access.
 :: To use: create github_token.txt in the same folder as run.bat
@@ -310,6 +310,7 @@ echo     "mediaorganizer/mapview.py",
 echo     "mediaorganizer/cli.py",
 echo     "mediaorganizer/gui.py",
 echo     "requirements.txt",
+echo     "selftest.py",
 echo ]
 echo ok = 0
 echo for f in FILES:
@@ -331,13 +332,28 @@ python _update.py
 del _update.py
 echo.
 
-:: --- 4. Install deps + optional tools check + launch ----------------------
-echo [4/4] Installing / updating dependencies...
+:: --- 4. Install deps -------------------------------------------------------
+echo [4/5] Installing / updating dependencies...
 pip install --quiet --exists-action i -r requirements.txt
 if !errorlevel! neq 0 (
     echo   WARNING: Some packages may have failed. Tool may still work.
 )
 echo   done.
+echo.
+
+:: --- 4.5. Self-test --------------------------------------------------------
+echo [4.5/5] Running self-test...
+python selftest.py
+if !errorlevel! neq 0 (
+    echo.
+    echo  Self-test found critical failures. Fix the FAIL items above.
+    echo  Press any key to launch anyway, or close this window to abort.
+    pause
+)
+echo.
+
+:: --- 5. Optional tools check + launch --------------------------------------
+echo [5/5] Launching...
 echo.
 
 ffmpeg -version >nul 2>&1

@@ -87,6 +87,9 @@ class App(tk.Tk):
         self._selected_entry = None
         self._filter_var = tk.StringVar()
         self._quality_filter_var = tk.StringVar(value="All")
+        self._lowres_thresh_var = tk.DoubleVar(value=1.0)
+        self._lowres_entries: list = []
+        self._dl_url_var = tk.StringVar()
         self._mode_var = tk.StringVar(value="type")
         self._recursive_var = tk.BooleanVar(value=True)
         self._apply_var = tk.BooleanVar(value=False)
@@ -479,8 +482,64 @@ class App(tk.Tk):
         section("📂 Organisation")
         tool_row("Sort WhatsApp / Telegram / Screenshots", self._tool_app_sort)
         tool_row("Fix File Timestamps from EXIF",          self._tool_fix_timestamps)
+        tool_row("Fix Dates from Filename",                self._tool_fix_dates_from_filename,
+                 "(sets mtime from YYYYMMDD in filename)")
         tool_row("Find Corrupted Files",                   self._tool_find_corrupt)
         tool_row("Find Stale Files (old, no EXIF)",        self._tool_find_stale)
+
+        # Low-Res Finder
+        section("🔍 Low-Res Image Finder")
+
+        row_thresh = tk.Frame(inner, bg=BG)
+        row_thresh.pack(fill="x", padx=12, pady=(2, 0))
+        tk.Label(row_thresh, text="Resolution threshold:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 9)).pack(side="left")
+        lbl_thresh = tk.Label(row_thresh, text="1.0 MP", bg=BG, fg=FG,
+                              font=("Segoe UI", 9, "bold"), width=7)
+        lbl_thresh.pack(side="right")
+
+        def _on_thresh_change(val):
+            lbl_thresh.config(text=f"{float(val):.1f} MP")
+
+        ttk.Scale(row_thresh, from_=0.1, to=12.0, orient="horizontal",
+                  variable=self._lowres_thresh_var,
+                  command=_on_thresh_change, length=220).pack(side="left", padx=8)
+
+        tool_row("Find Low-Res Images", self._tool_find_low_res,
+                 "(filters Files tab; needs: pillow)")
+
+        row_search = tk.Frame(inner, bg=BG)
+        row_search.pack(fill="x", padx=12, pady=(2, 2))
+        tk.Label(row_search, text="Search selected →", bg=BG, fg=FG2,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+        for label, svc in [
+            ("Google Lens",    "lens"),
+            ("TinEye",         "tineye"),
+            ("Bing Visual",    "bing"),
+            ("Google Images",  "google_images"),
+            ("4chan Archives", "4chan"),
+        ]:
+            tk.Button(row_search, text=label, bg=BG2, fg=FG, relief="flat",
+                      padx=6, command=lambda s=svc: self._tool_open_search(s)
+                      ).pack(side="left", padx=2)
+
+        row_batch = tk.Frame(inner, bg=BG)
+        row_batch.pack(fill="x", padx=12, pady=(0, 2))
+        tk.Button(row_batch, text="Batch Open All Low-Res", bg=BG2, fg=FG,
+                  relief="flat", padx=6,
+                  command=self._tool_batch_open_lowres).pack(side="left")
+        tk.Label(row_batch, text="(Google Images, incognito, one tab per file)",
+                 bg=BG, fg=FG2, font=("Segoe UI", 8)).pack(side="left", padx=6)
+
+        row_dl = tk.Frame(inner, bg=BG)
+        row_dl.pack(fill="x", padx=12, pady=(0, 6))
+        tk.Label(row_dl, text="Replace with URL:", bg=BG, fg=FG2,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Entry(row_dl, textvariable=self._dl_url_var, bg=BG2, fg=FG,
+                 relief="flat", width=38).pack(side="left", padx=6)
+        tk.Button(row_dl, text="Download & Replace", bg=BG2, fg=FG,
+                  relief="flat", padx=6,
+                  command=self._tool_download_replace).pack(side="left")
 
         # Undo
         section("↩ Safety")
@@ -1204,6 +1263,174 @@ class App(tk.Tk):
             done = sum(1 for e in sel if repair.secure_delete(e.path))
             return f"Securely deleted {done} files"
         self._run_in_thread(_fn, status="Shredding files…")
+
+    _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif", ".heic"}
+
+    def _tool_find_low_res(self):
+        if not self._entries:
+            self._set_status("No files loaded — scan a folder first.")
+            return
+        thresh_mp = self._lowres_thresh_var.get()
+        thresh_px = thresh_mp * 1_000_000
+
+        def _fn():
+            from PIL import Image as _Img
+            low = []
+            for e in self._entries:
+                if e.path.suffix.lower() not in self._IMAGE_EXTS:
+                    continue
+                try:
+                    with _Img.open(e.path) as img:
+                        w, h = img.size
+                    if w * h < thresh_px:
+                        low.append(e)
+                except Exception:
+                    pass
+            self._lowres_entries = low
+            self.after(0, lambda: self._populate_tree(low))
+            if not low:
+                return f"No images found below {thresh_mp:.1f} MP"
+            return f"Found {len(low)} image(s) below {thresh_mp:.1f} MP — shown in Files tab"
+
+        self._run_in_thread(_fn, status=f"Scanning for images below {thresh_mp:.1f} MP…")
+
+    def _tool_open_search(self, service: str):
+        import subprocess, urllib.parse, webbrowser
+
+        entry = self._selected_entry
+        if entry is None:
+            if self._lowres_entries:
+                entry = self._lowres_entries[0]
+            else:
+                self._set_status("Select a file first (or run Find Low-Res Images).")
+                return
+
+        stem = entry.path.stem
+        path_str = str(entry.path)
+
+        self.clipboard_clear()
+        self.clipboard_append(path_str)
+
+        if service == "lens":
+            url = "https://lens.google.com/upload"
+            msg = "Opened Google Lens — drag the copied path into the upload box"
+        elif service == "tineye":
+            url = "https://tineye.com/"
+            msg = "Opened TinEye — drag the copied path into the upload box"
+        elif service == "bing":
+            url = "https://www.bing.com/visualsearch"
+            msg = "Opened Bing Visual Search — drag the copied path into the upload box"
+        elif service == "google_images":
+            q = urllib.parse.quote(stem)
+            url = f"https://www.google.com/search?tbm=isch&q={q}"
+            msg = f"Searching Google Images for: {stem}"
+        elif service == "4chan":
+            _ARCHIVE_SITES = [
+                "boards.4chan.org", "desuarchive.org", "4plebs.org",
+                "archive.4plebs.org", "archived.moe", "warosu.org",
+                "nyafuu.org", "arch.b4k.co", "thebarchive.com",
+                "fireden.net", "palanq.win", "archive.palanq.win",
+                "archiveofsins.com", "8kun.top", "archive.alice.al",
+                "eientei.xyz", "4chanarchives.com", "ayasequart.org",
+                "randomarchive.com",
+            ]
+            site_clause = " OR ".join(f"site:{s}" for s in _ARCHIVE_SITES)
+            q = urllib.parse.quote(f"{stem} {site_clause}")
+            url = f"https://www.google.com/search?q={q}"
+            msg = f"Searching 4chan/archives for: {stem}"
+        else:
+            return
+
+        try:
+            from .dupe_finder import find_chrome_exe
+            chrome = find_chrome_exe()
+        except Exception:
+            chrome = None
+
+        if chrome:
+            subprocess.Popen([chrome, "--incognito", url])
+        else:
+            webbrowser.open(url)
+
+        self._set_status(msg)
+
+    def _tool_batch_open_lowres(self):
+        entries = self._lowres_entries
+        if not entries:
+            self._set_status("Run 'Find Low-Res Images' first.")
+            return
+        if len(entries) > 5:
+            if not messagebox.askyesno(
+                    "Batch Open",
+                    f"Open {len(entries)} tabs in Chrome incognito?\n"
+                    "(one Google Images search per file)"):
+                return
+        import subprocess, urllib.parse, webbrowser
+        try:
+            from .dupe_finder import find_chrome_exe
+            chrome = find_chrome_exe()
+        except Exception:
+            chrome = None
+        for e in entries:
+            q = urllib.parse.quote(e.path.stem)
+            url = f"https://www.google.com/search?tbm=isch&q={q}"
+            if chrome:
+                subprocess.Popen([chrome, "--incognito", url])
+            else:
+                webbrowser.open(url)
+        self._set_status(f"Opened {len(entries)} search tabs (incognito)")
+
+    def _tool_download_replace(self):
+        url = self._dl_url_var.get().strip()
+        if not url:
+            self._set_status("Paste a direct image URL into the field first.")
+            return
+        entry = self._selected_entry
+        if entry is None:
+            self._set_status("Select a file in the Files tab first.")
+            return
+
+        def _fn():
+            import urllib.request, shutil
+            try:
+                with urllib.request.urlopen(url, timeout=30) as resp:
+                    data = resp.read()
+            except Exception as e:
+                return f"Download failed: {e}"
+            size_mb = len(data) / 1_048_576
+            tmp = entry.path.with_suffix(entry.path.suffix + ".tmp")
+            tmp.write_bytes(data)
+            shutil.move(str(tmp), str(entry.path))
+            self.after(0, lambda: self._dl_url_var.set(""))
+            self.after(0, lambda: self._populate_tree(self._entries))
+            return f"Replaced {entry.path.name} ({size_mb:.1f} MB)"
+
+        self._run_in_thread(_fn, status="Downloading replacement…")
+
+    def _tool_fix_dates_from_filename(self):
+        if not self._entries:
+            self._set_status("No files loaded — scan a folder first.")
+            return
+
+        def _fn():
+            import re, os
+            from datetime import datetime
+            pat = re.compile(r'(?<!\d)(20\d{2})[-_]?(\d{2})[-_]?(\d{2})(?!\d)')
+            fixed = 0
+            for e in self._entries:
+                m = pat.search(e.path.stem)
+                if not m:
+                    continue
+                try:
+                    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    ts = datetime(y, mo, d, 12, 0, 0).timestamp()
+                    os.utime(e.path, (ts, ts))
+                    fixed += 1
+                except Exception:
+                    pass
+            return f"Fixed timestamps for {fixed} file(s) from filename dates"
+
+        self._run_in_thread(_fn, status="Fixing dates from filenames…")
 
     def _toggle_watch(self):
         if self._watcher:
