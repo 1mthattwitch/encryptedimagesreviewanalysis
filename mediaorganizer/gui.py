@@ -119,9 +119,10 @@ class App(tk.Tk):
         # Right-side buttons
         btn_row = tk.Frame(tb, bg=BG3)
         btn_row.pack(side="right", padx=8)
-        tk.Button(btn_row, text="🔍 Scan", bg=ACCENT, fg="white", relief="flat",
-                  font=("Segoe UI", 10, "bold"),
-                  command=self._scan).pack(side="left", padx=2)
+        self._scan_btn = tk.Button(btn_row, text="🔍 Scan", bg=ACCENT, fg="white",
+                                    relief="flat", font=("Segoe UI", 10, "bold"),
+                                    command=self._scan)
+        self._scan_btn.pack(side="left", padx=2)
         tk.Button(btn_row, text="📂 Organise", bg=BG2, fg=FG, relief="flat",
                   command=self._organise).pack(side="left", padx=2)
         tk.Button(btn_row, text="📁 Open Lightbox", bg=BG2, fg=FG, relief="flat",
