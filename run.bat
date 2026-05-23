@@ -261,7 +261,7 @@ echo.
 echo [3/4] Checking for updates...
 (
 echo import urllib.request, os
-echo BRANCH = "claude/decrypt-gallery-vault-POpHP"
+echo BRANCH = "main"
 echo BASE = "https://raw.githubusercontent.com/1mthattwitch/encryptedimagesreviewanalysis/" + BRANCH + "/"
 echo FILES = [
 echo     "mediaorganizer/__init__.py",
