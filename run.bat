@@ -375,13 +375,17 @@ if !errorlevel! neq 0 (
 
 echo  Launching Media Organizer...
 echo.
-python -m mediaorganizer.gui
+python -m mediaorganizer.gui 2>"%~dp0error.log"
 
 if !errorlevel! neq 0 (
     echo.
-    echo  ERROR: The GUI failed to start. See the error above.
-    echo  Paste the error into chat for help.
+    echo  ERROR: The GUI failed to start. Error details:
+    echo  --------------------------------------------------------
+    type "%~dp0error.log"
+    echo  --------------------------------------------------------
+    echo  Copy the above and paste it into chat for help.
 )
+if exist "%~dp0error.log" del "%~dp0error.log"
 
 echo.
 call .venv\Scripts\deactivate.bat 2>nul
