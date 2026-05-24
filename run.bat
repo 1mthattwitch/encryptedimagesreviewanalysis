@@ -260,9 +260,17 @@ echo.
 :: --- 3. Auto-update from GitHub -------------------------------------------
 echo [3/5] Checking for updates...
 
-:: Read optional GitHub token for private repo access.
-:: To use: create github_token.txt in the same folder as run.bat
-:: and paste your fine-grained read-only GitHub PAT (one line, no spaces).
+:: Try git pull first (fastest, updates everything including run.bat itself)
+git -C "%~dp0" pull --ff-only origin main 2>nul
+if !errorlevel! equ 0 (
+    echo   Updated via git.
+    echo.
+    goto UPDATE_DONE
+)
+
+:: No git repo or git unavailable -- fall back to direct file download
+echo   Falling back to direct download...
+
 set GITHUB_TOKEN=
 if exist "%~dp0github_token.txt" (
     for /f "usebackq delims=" %%T in ("%~dp0github_token.txt") do (
@@ -311,25 +319,27 @@ echo     "mediaorganizer/cli.py",
 echo     "mediaorganizer/gui.py",
 echo     "requirements.txt",
 echo     "selftest.py",
+echo     "run.bat",
 echo ]
 echo ok = 0
 echo for f in FILES:
+echo     local = "run.bat.update" if f == "run.bat" else f
 echo     os.makedirs^(os.path.dirname^(f^) or ".", exist_ok=True^)
 echo     try:
-echo         urllib.request.urlretrieve^(BASE + f, f^)
+echo         urllib.request.urlretrieve^(BASE + f, local^)
 echo         print^("  + " + f^)
 echo         ok += 1
 echo     except Exception as e:
 echo         print^("  ! " + f + " -- " + str^(e^)^)
 echo if ok == 0:
-echo     print^("  No network or auth error -- running with existing files."^)
-echo     if not TOKEN:
-echo         print^("  Tip: create github_token.txt with a fine-grained read-only PAT."^)
+echo     print^("  No network -- running with existing files."^)
 echo else:
 echo     print^("  Updated " + str^(ok^) + " file(s^)."^)
 ) > _update.py
 python _update.py
 del _update.py
+
+:UPDATE_DONE
 echo.
 
 :: --- 4. Install deps -------------------------------------------------------
@@ -389,4 +399,11 @@ if exist "%~dp0error.log" del "%~dp0error.log"
 
 echo.
 call .venv\Scripts\deactivate.bat 2>nul
+
+if exist "%~dp0run.bat.update" (
+    echo  run.bat has been updated -- applying now.
+    move /y "%~dp0run.bat.update" "%~f0" >nul 2>&1
+    echo  Changes take effect next launch.
+    echo.
+)
 pause
