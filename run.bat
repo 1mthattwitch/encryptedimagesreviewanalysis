@@ -366,6 +366,11 @@ echo.
 echo [5/5] Launching...
 echo.
 
+:: Suppress OpenCV / ffmpeg C-level console noise before Python loads cv2
+set OPENCV_LOG_LEVEL=ERROR
+set OPENCV_FFMPEG_LOGLEVEL=quiet
+set OPENCV_IO_ENABLE_OPENEXR=0
+
 ffmpeg -version >nul 2>&1
 if !errorlevel! neq 0 (
     echo  [INFO] ffmpeg not found -- video tools will be limited.
