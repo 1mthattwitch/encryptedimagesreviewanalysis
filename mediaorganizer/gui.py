@@ -14,6 +14,10 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
+# Suppress noisy ffmpeg/opencv console output (moov atom errors, etc.)
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "quiet")
+
 # Disable PIL's decompression bomb limit — these are trusted local images
 import PIL.Image
 PIL.Image.MAX_IMAGE_PIXELS = None
