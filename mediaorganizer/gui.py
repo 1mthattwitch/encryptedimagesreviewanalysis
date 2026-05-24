@@ -14,6 +14,10 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
+# Disable PIL's decompression bomb limit — these are trusted local images
+import PIL.Image
+PIL.Image.MAX_IMAGE_PIXELS = None
+
 # ── Colour palette ────────────────────────────────────────────────────────────────────────────────
 BG     = "#1a1a2e"
 BG2    = "#16213e"
