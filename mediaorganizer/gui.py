@@ -699,7 +699,9 @@ class App(tk.Tk):
 
             # Phase 4 — dupes   65%→78%
             self.after(0, lambda: self._set_status("Finding duplicates…", 0.65))
-            dup_groups = duplicates.find_duplicates(entries)
+            dup_groups = duplicates.find_duplicates(
+                entries,
+                progress_cb=_throttled_cb("Finding duplicates", 0.65, 0.78))
 
             # Phase 5 — events  80%→100%
             self.after(0, lambda: self._set_status("Grouping events…", 0.8))
