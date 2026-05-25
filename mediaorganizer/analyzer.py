@@ -88,7 +88,9 @@ def _video_keyframe_b64(path: Path) -> Optional[str]:
         import numpy as np
         from PIL import Image
         import io
-        cap = cv2.VideoCapture(str(path))
+        from mediaorganizer import _quiet_stderr
+        with _quiet_stderr():
+            cap = cv2.VideoCapture(str(path))
         if not cap.isOpened():
             return None
         total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
