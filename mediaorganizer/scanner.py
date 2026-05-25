@@ -202,7 +202,9 @@ def _image_dims(path: Path) -> tuple[Optional[int], Optional[int]]:
 def _video_meta(path: Path) -> tuple[Optional[int], Optional[int], Optional[float], Optional[float]]:
     try:
         import cv2
-        cap = cv2.VideoCapture(str(path))
+        from mediaorganizer import _quiet_stderr
+        with _quiet_stderr():
+            cap = cv2.VideoCapture(str(path))
         if not cap.isOpened():
             return None, None, None, None
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))

@@ -77,7 +77,9 @@ def _check_video(path: Path) -> list[str]:
     issues = []
     try:
         import cv2
-        cap = cv2.VideoCapture(str(path))
+        from mediaorganizer import _quiet_stderr
+        with _quiet_stderr():
+            cap = cv2.VideoCapture(str(path))
         if not cap.isOpened():
             issues.append("OpenCV cannot open video")
         else:

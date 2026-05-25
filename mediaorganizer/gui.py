@@ -14,6 +14,14 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
+# Suppress noisy ffmpeg/opencv console output (moov atom errors, etc.)
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "quiet")
+
+# Disable PIL's decompression bomb limit — these are trusted local images
+import PIL.Image
+PIL.Image.MAX_IMAGE_PIXELS = None
+
 # ── Colour palette ────────────────────────────────────────────────────────────────────────────────
 BG     = "#1a1a2e"
 BG2    = "#16213e"
@@ -653,24 +661,21 @@ class App(tk.Tk):
             from . import scanner, health, duplicates, quality as qmod, events
 
             def _throttled_cb(label, lo, hi):
-                """Return a progress_cb that updates status at most every 250 ms."""
+                """Return a progress_cb(i, total) that updates the UI at most every 250 ms."""
                 _t = [0.0]
                 def _cb(i, total):
                     now = time.monotonic()
                     if now - _t[0] >= 0.25:
                         _t[0] = now
                         frac = lo + (i / max(total, 1)) * (hi - lo)
-                        pct = f"{i}/{total}"
-                        self.after(0, lambda l=label, f=frac, p=pct:
-                                   self._set_status(f"{l} ({p})", f))
+                        self.after(0, lambda l=label, f=frac, i=i, t=total:
+                                   self._set_status(f"{l} ({i}/{t})", f))
                 return _cb
 
-            # Phase 1 — discover (15 % → 28 %)
+            # Phase 1 — discover  15 % → 28 %
             self.after(0, lambda: self._set_status("Discovering files…", 0.15))
             _last_scan = [0.0]
-            _count = [0]
             def _scan_cb(n, name):
-                _count[0] = n
                 now = time.monotonic()
                 if now - _last_scan[0] >= 0.25:
                     _last_scan[0] = now
@@ -682,22 +687,22 @@ class App(tk.Tk):
                                    recursive=self._recursive_var.get(),
                                    progress_cb=_scan_cb)
 
-            # Phase 2 — health (30 % → 48 %)
+            # Phase 2 — health   30 % → 48 %
             self.after(0, lambda: self._set_status(
                 f"Health-checking {len(entries)} files…", 0.3))
             health.check_all(entries,
                              progress_cb=_throttled_cb("Health-checking", 0.30, 0.48))
 
-            # Phase 3 — quality (50 % → 63 %)
+            # Phase 3 — quality  50 % → 63 %
             self.after(0, lambda: self._set_status("Scoring quality…", 0.5))
             qmod.score_all(entries,
                            progress_cb=_throttled_cb("Scoring quality", 0.50, 0.63))
 
-            # Phase 4 — duplicates (65 % → 78 %)
+            # Phase 4 — dupes   65 % → 78 %
             self.after(0, lambda: self._set_status("Finding duplicates…", 0.65))
             dup_groups = duplicates.find_duplicates(entries)
 
-            # Phase 5 — events (80 % → 100 %)
+            # Phase 5 — events  80 % → 100 %
             self.after(0, lambda: self._set_status("Grouping events…", 0.8))
             ev_groups = events.group_by_events(entries)
             self.after(0, lambda: self._finish_scan(entries, dup_groups, ev_groups))
