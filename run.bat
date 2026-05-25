@@ -260,9 +260,17 @@ echo.
 :: --- 3. Auto-update from GitHub -------------------------------------------
 echo [3/5] Checking for updates...
 
-:: Read optional GitHub token for private repo access.
-:: To use: create github_token.txt in the same folder as run.bat
-:: and paste your fine-grained read-only GitHub PAT (one line, no spaces).
+:: Try git pull first (fastest, updates everything including run.bat itself)
+git -C "%~dp0" pull --ff-only origin main 2>nul
+if !errorlevel! equ 0 (
+    echo   Updated via git.
+    echo.
+    goto UPDATE_DONE
+)
+
+:: No git repo or git unavailable -- fall back to direct file download
+echo   Falling back to direct download...
+
 set GITHUB_TOKEN=
 if exist "%~dp0github_token.txt" (
     for /f "usebackq delims=" %%T in ("%~dp0github_token.txt") do (
@@ -324,14 +332,14 @@ echo         ok += 1
 echo     except Exception as e:
 echo         print^("  ! " + f + " -- " + str^(e^)^)
 echo if ok == 0:
-echo     print^("  No network or auth error -- running with existing files."^)
-echo     if not TOKEN:
-echo         print^("  Tip: create github_token.txt with a fine-grained read-only PAT."^)
+echo     print^("  No network -- running with existing files."^)
 echo else:
 echo     print^("  Updated " + str^(ok^) + " file(s^)."^)
 ) > _update.py
 python _update.py
 del _update.py
+
+:UPDATE_DONE
 echo.
 
 :: --- 4. Install deps -------------------------------------------------------
@@ -358,6 +366,11 @@ echo.
 echo [5/5] Launching...
 echo.
 
+:: Suppress OpenCV / ffmpeg C-level console noise before Python loads cv2
+set OPENCV_LOG_LEVEL=ERROR
+set OPENCV_FFMPEG_LOGLEVEL=quiet
+set OPENCV_IO_ENABLE_OPENEXR=0
+
 ffmpeg -version >nul 2>&1
 if !errorlevel! neq 0 (
     echo  [INFO] ffmpeg not found -- video tools will be limited.
@@ -377,13 +390,17 @@ if !errorlevel! neq 0 (
 
 echo  Launching Media Organizer...
 echo.
-python -m mediaorganizer.gui
+python -m mediaorganizer.gui 2>"%~dp0error.log"
 
 if !errorlevel! neq 0 (
     echo.
-    echo  ERROR: The GUI failed to start. See the error above.
-    echo  Paste the error into chat for help.
+    echo  ERROR: The GUI failed to start. Error details:
+    echo  --------------------------------------------------------
+    type "%~dp0error.log"
+    echo  --------------------------------------------------------
+    echo  Copy the above and paste it into chat for help.
 )
+if exist "%~dp0error.log" del "%~dp0error.log"
 
 echo.
 call .venv\Scripts\deactivate.bat 2>nul
