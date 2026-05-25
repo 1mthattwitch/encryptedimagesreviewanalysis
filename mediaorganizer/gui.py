@@ -105,6 +105,14 @@ class App(tk.Tk):
         self._recursive_var = tk.BooleanVar(value=True)
         self._apply_var = tk.BooleanVar(value=False)
         self._output_var = tk.StringVar(value=str(Path.home() / "Organized"))
+        # AI Edit
+        self._a1111_url_var = tk.StringVar(value="http://localhost:7860")
+        self._comfy_url_var = tk.StringVar(value="http://localhost:8188")
+        self._ai_prompt_var = tk.StringVar()
+        self._ai_strength_var = tk.DoubleVar(value=0.55)
+        # Rate & Sort
+        self._rate_idx = 0
+        self._rate_entries: list = []
 
         self._build_toolbar()
         self._build_main()
@@ -188,6 +196,8 @@ class App(tk.Tk):
         self._tab_storage   = tk.Frame(self._notebook, bg=BG)
         self._tab_tools     = tk.Frame(self._notebook, bg=BG)
         self._tab_export    = tk.Frame(self._notebook, bg=BG)
+        self._tab_ai_edit   = tk.Frame(self._notebook, bg=BG)
+        self._tab_rate      = tk.Frame(self._notebook, bg=BG)
 
         self._notebook.add(self._tab_preview, text="Preview")
         self._notebook.add(self._tab_dupes,   text="Duplicates")
@@ -195,6 +205,8 @@ class App(tk.Tk):
         self._notebook.add(self._tab_storage, text="Storage")
         self._notebook.add(self._tab_tools,   text="Tools")
         self._notebook.add(self._tab_export,  text="Export")
+        self._notebook.add(self._tab_ai_edit, text="AI Edit")
+        self._notebook.add(self._tab_rate,    text="Rate & Sort")
 
         self._build_preview_tab()
         self._build_dupes_tab()
@@ -202,6 +214,8 @@ class App(tk.Tk):
         self._build_storage_tab()
         self._build_tools_tab()
         self._build_export_tab()
+        self._build_ai_edit_tab()
+        self._build_rate_tab()
 
     def _build_file_list(self, parent):
         # Filter bar
@@ -256,9 +270,9 @@ class App(tk.Tk):
     def _build_preview_tab(self):
         p = self._tab_preview
 
-        # Image canvas
-        self._canvas = tk.Canvas(p, bg=BG2, height=220, highlightthickness=0)
-        self._canvas.pack(fill="x", padx=8, pady=(8, 4))
+        # Image canvas — fills available height
+        self._canvas = tk.Canvas(p, bg=BG2, height=320, highlightthickness=0)
+        self._canvas.pack(fill="both", expand=True, padx=8, pady=(8, 4))
 
         # Rotate button
         tk.Button(p, text="⟳ Fix Rotation", bg=BG2, fg=FG, relief="flat",
@@ -1639,6 +1653,386 @@ class App(tk.Tk):
         )
         Path(out).write_text(html, encoding="utf-8")
         self._set_status(f"Calendar → {Path(out).name}")
+
+    # ── AI Edit tab ──────────────────────────────────────────────────────────────────────────────────
+
+    def _build_ai_edit_tab(self):
+        p = self._tab_ai_edit
+
+        def _section(txt):
+            tk.Label(p, text=txt, bg=BG, fg=ACCENT,
+                     font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=12, pady=(10, 2))
+            tk.Frame(p, bg=BG3, height=1).pack(fill="x", padx=8)
+
+        # ── Automatic1111 ──
+        _section("🎨 Automatic1111 / SDXL WebUI")
+        row = tk.Frame(p, bg=BG); row.pack(fill="x", padx=12, pady=4)
+        tk.Label(row, text="URL:", bg=BG, fg=FG2).pack(side="left")
+        tk.Entry(row, textvariable=self._a1111_url_var, bg=BG2, fg=FG,
+                 relief="flat", width=32).pack(side="left", padx=6)
+        self._a1111_status = tk.Label(row, text="●", bg=BG, fg=FG2, font=("Segoe UI", 12))
+        self._a1111_status.pack(side="left", padx=2)
+        tk.Button(row, text="Check", bg=BG2, fg=FG, relief="flat",
+                  command=self._check_a1111).pack(side="left", padx=4)
+
+        row2 = tk.Frame(p, bg=BG); row2.pack(fill="x", padx=12, pady=2)
+        tk.Label(row2, text="Prompt:", bg=BG, fg=FG2).pack(side="left")
+        tk.Entry(row2, textvariable=self._ai_prompt_var, bg=BG2, fg=FG,
+                 relief="flat", width=44).pack(side="left", padx=6, fill="x", expand=True)
+
+        row3 = tk.Frame(p, bg=BG); row3.pack(fill="x", padx=12, pady=2)
+        tk.Label(row3, text="Strength:", bg=BG, fg=FG2).pack(side="left")
+        self._strength_lbl = tk.Label(row3, text="0.55", bg=BG, fg=FG,
+                                       font=("Segoe UI", 9, "bold"), width=4)
+        self._strength_lbl.pack(side="left", padx=4)
+        ttk.Scale(row3, from_=0.05, to=1.0, orient="horizontal",
+                  variable=self._ai_strength_var, length=200,
+                  command=lambda v: self._strength_lbl.config(
+                      text=f"{float(v):.2f}")).pack(side="left")
+
+        row4 = tk.Frame(p, bg=BG); row4.pack(fill="x", padx=12, pady=4)
+        tk.Button(row4, text="🖼 img2img (API)", bg=BG2, fg=FG, relief="flat",
+                  command=self._a1111_img2img).pack(side="left", padx=2)
+        tk.Button(row4, text="⬆ Upscale (API)", bg=BG2, fg=FG, relief="flat",
+                  command=self._a1111_upscale).pack(side="left", padx=2)
+        tk.Button(row4, text="🌐 Open A1111 UI", bg=BG2, fg=FG, relief="flat",
+                  command=lambda: __import__("webbrowser").open(
+                      self._a1111_url_var.get())).pack(side="left", padx=2)
+
+        # ── ComfyUI ──
+        _section("⚙ ComfyUI")
+        row5 = tk.Frame(p, bg=BG); row5.pack(fill="x", padx=12, pady=4)
+        tk.Label(row5, text="URL:", bg=BG, fg=FG2).pack(side="left")
+        tk.Entry(row5, textvariable=self._comfy_url_var, bg=BG2, fg=FG,
+                 relief="flat", width=32).pack(side="left", padx=6)
+        self._comfy_status = tk.Label(row5, text="●", bg=BG, fg=FG2, font=("Segoe UI", 12))
+        self._comfy_status.pack(side="left", padx=2)
+        tk.Button(row5, text="Check", bg=BG2, fg=FG, relief="flat",
+                  command=self._check_comfyui).pack(side="left", padx=4)
+        tk.Button(row5, text="🌐 Open ComfyUI", bg=BG2, fg=FG, relief="flat",
+                  command=lambda: __import__("webbrowser").open(
+                      self._comfy_url_var.get())).pack(side="left", padx=6)
+
+        row6 = tk.Frame(p, bg=BG); row6.pack(fill="x", padx=12, pady=4)
+        tk.Button(row6, text="📋 Copy path to clipboard + open ComfyUI",
+                  bg=BG2, fg=FG, relief="flat",
+                  command=self._comfy_open_with_image).pack(side="left", padx=2)
+
+        # ── Result preview ──
+        _section("📷 Last Result")
+        self._ai_result_canvas = tk.Canvas(p, bg=BG2, height=200, highlightthickness=0)
+        self._ai_result_canvas.pack(fill="both", expand=True, padx=8, pady=4)
+        self._ai_result_lbl = tk.Label(p, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
+        self._ai_result_lbl.pack(anchor="w", padx=12, pady=(0, 4))
+
+    def _check_a1111(self):
+        import urllib.request
+        url = self._a1111_url_var.get().rstrip("/")
+        def _do():
+            try:
+                urllib.request.urlopen(f"{url}/sdapi/v1/memory", timeout=4)
+                self.after(0, lambda: self._a1111_status.config(fg=GREEN, text="●"))
+                self.after(0, lambda: self._set_status("A1111: online"))
+            except Exception:
+                self.after(0, lambda: self._a1111_status.config(fg=RED, text="●"))
+                self.after(0, lambda: self._set_status("A1111: offline or not running"))
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _check_comfyui(self):
+        import urllib.request
+        url = self._comfy_url_var.get().rstrip("/")
+        def _do():
+            try:
+                urllib.request.urlopen(f"{url}/system_stats", timeout=4)
+                self.after(0, lambda: self._comfy_status.config(fg=GREEN, text="●"))
+                self.after(0, lambda: self._set_status("ComfyUI: online"))
+            except Exception:
+                self.after(0, lambda: self._comfy_status.config(fg=RED, text="●"))
+                self.after(0, lambda: self._set_status("ComfyUI: offline or not running"))
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _a1111_img2img(self):
+        entry = self._selected_entry
+        if not entry or entry.file_type != "image":
+            messagebox.showinfo("img2img", "Select an image file first.")
+            return
+        prompt = self._ai_prompt_var.get().strip() or "high quality photo"
+        strength = self._ai_strength_var.get()
+        url = self._a1111_url_var.get().rstrip("/")
+        def _do():
+            try:
+                import base64, json, urllib.request, io
+                from PIL import Image
+                img = Image.open(entry.path).convert("RGB")
+                img.thumbnail((1024, 1024))
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=90)
+                b64 = base64.b64encode(buf.getvalue()).decode()
+                payload = json.dumps({
+                    "init_images": [b64],
+                    "prompt": prompt,
+                    "denoising_strength": strength,
+                    "steps": 20,
+                    "cfg_scale": 7,
+                    "sampler_name": "DPM++ 2M Karras",
+                    "width": img.width,
+                    "height": img.height,
+                }).encode()
+                req = urllib.request.Request(
+                    f"{url}/sdapi/v1/img2img", data=payload,
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    resp = json.loads(r.read())
+                result_b64 = resp["images"][0]
+                result_img = Image.open(io.BytesIO(base64.b64decode(result_b64)))
+                out_path = entry.path.with_stem(entry.path.stem + "_a1111")
+                result_img.save(out_path)
+                self.after(0, lambda: self._show_ai_result(result_img, str(out_path)))
+                self.after(0, lambda: self._set_status(f"img2img done → {out_path.name}"))
+            except Exception as e:
+                self.after(0, lambda: self._set_status(f"img2img error: {e}"))
+        self._set_status("Sending to A1111 img2img…", 0.3)
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _a1111_upscale(self):
+        entry = self._selected_entry
+        if not entry or entry.file_type != "image":
+            messagebox.showinfo("Upscale", "Select an image file first.")
+            return
+        url = self._a1111_url_var.get().rstrip("/")
+        def _do():
+            try:
+                import base64, json, urllib.request, io
+                from PIL import Image
+                img = Image.open(entry.path).convert("RGB")
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=95)
+                b64 = base64.b64encode(buf.getvalue()).decode()
+                payload = json.dumps({
+                    "image": b64,
+                    "upscaling_resize": 2,
+                    "upscaler_1": "R-ESRGAN 4x+",
+                }).encode()
+                req = urllib.request.Request(
+                    f"{url}/sdapi/v1/extra-single-image", data=payload,
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    resp = json.loads(r.read())
+                result_b64 = resp["image"]
+                result_img = Image.open(io.BytesIO(base64.b64decode(result_b64)))
+                out_path = entry.path.with_stem(entry.path.stem + "_2x")
+                result_img.save(out_path)
+                self.after(0, lambda: self._show_ai_result(result_img, str(out_path)))
+                self.after(0, lambda: self._set_status(f"Upscale done → {out_path.name}"))
+            except Exception as e:
+                self.after(0, lambda: self._set_status(f"Upscale error: {e}"))
+        self._set_status("Upscaling via A1111…", 0.3)
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _comfy_open_with_image(self):
+        entry = self._selected_entry
+        if not entry:
+            messagebox.showinfo("ComfyUI", "Select an image first.")
+            return
+        import webbrowser
+        self.clipboard_clear()
+        self.clipboard_append(str(entry.path))
+        webbrowser.open(self._comfy_url_var.get())
+        self._set_status("Path copied to clipboard — paste into ComfyUI Load Image node")
+
+    def _show_ai_result(self, img, path_str: str):
+        from PIL import ImageTk
+        cw = max(self._ai_result_canvas.winfo_width(), 400)
+        img.thumbnail((cw, 300))
+        self._ai_result_photo = ImageTk.PhotoImage(img)
+        self._ai_result_canvas.configure(height=img.height)
+        self._ai_result_canvas.delete("all")
+        self._ai_result_canvas.create_image(
+            cw // 2, img.height // 2, image=self._ai_result_photo, anchor="center")
+        self._ai_result_lbl.configure(text=f"Saved: {path_str}")
+
+    # ── Rate & Sort tab ──────────────────────────────────────────────────────────────────────────────
+
+    def _build_rate_tab(self):
+        p = self._tab_rate
+
+        # Large preview canvas
+        self._rate_canvas = tk.Canvas(p, bg=BG2, highlightthickness=0)
+        self._rate_canvas.pack(fill="both", expand=True, padx=4, pady=(4, 0))
+
+        # File name label
+        self._rate_name_lbl = tk.Label(p, text="— no file selected —", bg=BG, fg=FG2,
+                                        font=("Segoe UI", 9))
+        self._rate_name_lbl.pack(pady=(2, 0))
+
+        # Navigation row
+        nav = tk.Frame(p, bg=BG); nav.pack(fill="x", padx=8, pady=4)
+        tk.Button(nav, text="◀ Prev", bg=BG2, fg=FG, relief="flat",
+                  command=lambda: self._rate_nav(-1)).pack(side="left", padx=2)
+        self._rate_pos_lbl = tk.Label(nav, text="0 / 0", bg=BG, fg=FG2,
+                                       font=("Segoe UI", 9))
+        self._rate_pos_lbl.pack(side="left", padx=8)
+        tk.Button(nav, text="Next ▶", bg=BG2, fg=FG, relief="flat",
+                  command=lambda: self._rate_nav(1)).pack(side="left", padx=2)
+        self._rate_auto_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(nav, text="Auto-advance", variable=self._rate_auto_var,
+                       bg=BG, fg=FG, activebackground=BG, selectcolor=BG2).pack(side="left", padx=8)
+
+        # Star rating
+        star_row = tk.Frame(p, bg=BG); star_row.pack(pady=2)
+        tk.Label(star_row, text="Rate:", bg=BG, fg=FG2).pack(side="left", padx=4)
+        for n in range(1, 6):
+            tk.Button(star_row, text="★" * n + "☆" * (5 - n), bg=BG2, fg=YELLOW,
+                      relief="flat", font=("Segoe UI", 10),
+                      command=lambda r=n: self._rate_set(r)).pack(side="left", padx=2)
+
+        # Triage buttons
+        triage = tk.Frame(p, bg=BG); triage.pack(pady=4)
+        tk.Button(triage, text="✓ Keep",        bg=GREEN,  fg="white", relief="flat",
+                  width=10, command=lambda: self._rate_tag("keep")).pack(side="left", padx=3)
+        tk.Button(triage, text="✏ For Edit",    bg=BG3,    fg=FG, relief="flat",
+                  width=10, command=lambda: self._rate_tag("edit")).pack(side="left", padx=3)
+        tk.Button(triage, text="✗ Skip",        bg=BG2,    fg=FG2, relief="flat",
+                  width=10, command=lambda: self._rate_tag("skip")).pack(side="left", padx=3)
+        tk.Button(triage, text="🗑 Delete",      bg=RED,    fg="white", relief="flat",
+                  width=10, command=self._rate_delete).pack(side="left", padx=3)
+
+        # Tag summary
+        self._rate_tag_lbl = tk.Label(p, text="", bg=BG, fg=FG2, font=("Segoe UI", 8))
+        self._rate_tag_lbl.pack(pady=(0, 4))
+
+        # Action: move "For Edit" to folder
+        act = tk.Frame(p, bg=BG); act.pack(fill="x", padx=12, pady=4)
+        tk.Button(act, text="📂 Move 'For Edit' to…", bg=BG2, fg=FG, relief="flat",
+                  command=self._rate_move_edit).pack(side="left", padx=2)
+        tk.Button(act, text="📋 Export tag list (CSV)", bg=BG2, fg=FG, relief="flat",
+                  command=self._rate_export_csv).pack(side="left", padx=6)
+
+        self._notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+    def _on_tab_changed(self, _=None):
+        sel = self._notebook.select()
+        if sel == str(self._tab_rate):
+            self._rate_entries = [e for e in self._entries
+                                  if e.file_type in ("image", "video")]
+            self._rate_idx = 0
+            self._rate_show()
+
+    def _rate_show(self):
+        if not self._rate_entries:
+            self._rate_canvas.delete("all")
+            self._rate_canvas.create_text(200, 100, text="No images/videos loaded — scan first",
+                                           fill=FG2, font=("Segoe UI", 12))
+            self._rate_pos_lbl.configure(text="0 / 0")
+            self._rate_name_lbl.configure(text="— no files —")
+            return
+
+        i = self._rate_idx
+        total = len(self._rate_entries)
+        e = self._rate_entries[i]
+        self._rate_pos_lbl.configure(text=f"{i + 1} / {total}")
+
+        tag = e.metadata.get("triage", "")
+        stars = "★" * e.metadata.get("rating", 0)
+        self._rate_name_lbl.configure(
+            text=f"{e.path.name}  {stars}  {'[' + tag + ']' if tag else ''}")
+        self._rate_tag_lbl.configure(
+            text=f"keep:{sum(1 for x in self._rate_entries if x.metadata.get('triage')=='keep')}  "
+                 f"edit:{sum(1 for x in self._rate_entries if x.metadata.get('triage')=='edit')}  "
+                 f"skip:{sum(1 for x in self._rate_entries if x.metadata.get('triage')=='skip')}")
+
+        self._rate_canvas.delete("all")
+        if e.file_type == "image":
+            try:
+                from PIL import Image, ImageTk
+                cw = max(self._rate_canvas.winfo_width(), 600)
+                ch = max(self._rate_canvas.winfo_height(), 400)
+                img = Image.open(e.path).convert("RGB")
+                img.thumbnail((cw, ch))
+                self._rate_photo = ImageTk.PhotoImage(img)
+                self._rate_canvas.create_image(
+                    cw // 2, ch // 2, image=self._rate_photo, anchor="center")
+            except Exception:
+                self._rate_canvas.create_text(200, 150, text="(preview error)", fill=FG2)
+        else:
+            cw = max(self._rate_canvas.winfo_width(), 600)
+            ch = max(self._rate_canvas.winfo_height(), 400)
+            self._rate_canvas.create_text(cw // 2, ch // 2,
+                                           text=f"🎦 {e.path.name}", fill=FG2,
+                                           font=("Segoe UI", 18))
+
+    def _rate_nav(self, delta: int):
+        if not self._rate_entries:
+            return
+        self._rate_idx = (self._rate_idx + delta) % len(self._rate_entries)
+        self._rate_show()
+
+    def _rate_set(self, stars: int):
+        if not self._rate_entries:
+            return
+        self._rate_entries[self._rate_idx].metadata["rating"] = stars
+        if self._rate_auto_var.get():
+            self._rate_nav(1)
+        else:
+            self._rate_show()
+
+    def _rate_tag(self, tag: str):
+        if not self._rate_entries:
+            return
+        self._rate_entries[self._rate_idx].metadata["triage"] = tag
+        if self._rate_auto_var.get():
+            self._rate_nav(1)
+        else:
+            self._rate_show()
+
+    def _rate_delete(self):
+        if not self._rate_entries:
+            return
+        e = self._rate_entries[self._rate_idx]
+        if not messagebox.askyesno("Delete", f"Permanently delete {e.path.name}?"):
+            return
+        try:
+            e.path.unlink()
+            self._rate_entries.pop(self._rate_idx)
+            self._entries = [x for x in self._entries if x.path != e.path]
+            if self._rate_idx >= len(self._rate_entries):
+                self._rate_idx = max(0, len(self._rate_entries) - 1)
+            self._rate_show()
+        except Exception as ex:
+            messagebox.showerror("Delete", str(ex))
+
+    def _rate_move_edit(self):
+        dest = filedialog.askdirectory(title="Move 'For Edit' images to…")
+        if not dest:
+            return
+        dest_path = Path(dest)
+        dest_path.mkdir(parents=True, exist_ok=True)
+        import shutil
+        moved = 0
+        for e in self._rate_entries:
+            if e.metadata.get("triage") == "edit":
+                try:
+                    shutil.move(str(e.path), dest_path / e.path.name)
+                    moved += 1
+                except Exception:
+                    pass
+        self._set_status(f"Moved {moved} 'For Edit' files → {dest_path.name}")
+
+    def _rate_export_csv(self):
+        out = filedialog.asksaveasfilename(
+            defaultextension=".csv", filetypes=[("CSV", "*.csv")],
+            initialfile="ratings.csv")
+        if not out:
+            return
+        import csv
+        with open(out, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["file", "type", "size", "rating", "triage"])
+            for e in self._rate_entries:
+                w.writerow([e.path, e.file_type, e.size_bytes,
+                            e.metadata.get("rating", ""),
+                            e.metadata.get("triage", "")])
+        self._set_status(f"Ratings exported → {Path(out).name}")
 
     def _launch_dupe_finder(self):
         try:
