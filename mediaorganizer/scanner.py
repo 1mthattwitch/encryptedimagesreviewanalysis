@@ -224,8 +224,11 @@ def _mtime(path: Path) -> Optional[datetime]:
         return None
 
 
-def scan(folder: Path, recursive: bool = True) -> list[FileEntry]:
-    """Walk *folder* and return a FileEntry for every file found."""
+def scan(folder: Path, recursive: bool = True, progress_cb=None) -> list[FileEntry]:
+    """Walk *folder* and return a FileEntry for every file found.
+
+    progress_cb(n, name) is called after each file if provided.
+    """
     entries: list[FileEntry] = []
     walk = folder.rglob("*") if recursive else folder.glob("*")
     for p in walk:
@@ -255,6 +258,8 @@ def scan(folder: Path, recursive: bool = True) -> list[FileEntry]:
             entry.width, entry.height, entry.duration_s, entry.fps = _video_meta(p)
 
         entries.append(entry)
+        if progress_cb:
+            progress_cb(len(entries), p.name)
 
     return entries
 

@@ -649,10 +649,23 @@ class App(tk.Tk):
         self._scan_btn.configure(state="disabled")
 
         def _work():
+            import time
             from . import scanner, health, duplicates, quality as qmod, events
             self.after(0, lambda: self._set_status("Discovering files…", 0.15))
+
+            _last_ui = [0.0]
+            def _scan_cb(n, name):
+                now = time.monotonic()
+                if now - _last_ui[0] >= 0.25:
+                    _last_ui[0] = now
+                    # Animate bar from 15 % → 28 % while scanning (exact total unknown)
+                    frac = min(0.15 + n / 2000 * 0.13, 0.28)
+                    self.after(0, lambda c=n, f=frac: self._set_status(
+                        f"Discovering files… ({c} found)", f))
+
             entries = scanner.scan(self._scan_folder,
-                                   recursive=self._recursive_var.get())
+                                   recursive=self._recursive_var.get(),
+                                   progress_cb=_scan_cb)
             self.after(0, lambda: self._set_status(f"Health-checking {len(entries)} files…", 0.3))
             health.check_all(entries)
             self.after(0, lambda: self._set_status("Scoring quality…", 0.5))
