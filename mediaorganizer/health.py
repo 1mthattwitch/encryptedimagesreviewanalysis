@@ -126,9 +126,12 @@ def _check_document(path: Path) -> list[str]:
     return issues
 
 
-def check_all(entries: list["FileEntry"]) -> None:
+def check_all(entries: list["FileEntry"], progress_cb=None) -> None:
     """Run health check on every entry, mutating entry.health_ok and entry.health_issues in-place."""
-    for entry in entries:
+    total = len(entries)
+    for i, entry in enumerate(entries):
         result = check(entry)
         entry.health_ok = result.ok
         entry.health_issues = result.issues
+        if progress_cb:
+            progress_cb(i + 1, total)
