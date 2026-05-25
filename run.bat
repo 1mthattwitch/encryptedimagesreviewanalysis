@@ -405,6 +405,7 @@ if exist "%~dp0error.log" del "%~dp0error.log"
 echo.
 call .venv\Scripts\deactivate.bat 2>nul
 
+:: Apply any run.bat update that was staged during this run
 if exist "%~dp0run.bat.update" (
     echo  run.bat has been updated -- applying now.
     move /y "%~dp0run.bat.update" "%~f0" >nul 2>&1
