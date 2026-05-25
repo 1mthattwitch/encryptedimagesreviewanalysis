@@ -659,14 +659,25 @@ class App(tk.Tk):
         def _work():
             import time
             from . import scanner, health, duplicates, quality as qmod, events
-            self.after(0, lambda: self._set_status("Discovering files…", 0.15))
 
-            _last_ui = [0.0]
+            def _throttled_cb(label, lo, hi):
+                _t = [0.0]
+                def _cb(i, total):
+                    now = time.monotonic()
+                    if now - _t[0] >= 0.25:
+                        _t[0] = now
+                        frac = lo + (i / max(total, 1)) * (hi - lo)
+                        self.after(0, lambda l=label, f=frac, i=i, t=total:
+                                   self._set_status(f"{l} ({i}/{t})", f))
+                return _cb
+
+            # Phase 1 — discover  15%→28%
+            self.after(0, lambda: self._set_status("Discovering files…", 0.15))
+            _last_scan = [0.0]
             def _scan_cb(n, name):
                 now = time.monotonic()
-                if now - _last_ui[0] >= 0.25:
-                    _last_ui[0] = now
-                    # Animate bar from 15 % → 28 % while scanning (exact total unknown)
+                if now - _last_scan[0] >= 0.25:
+                    _last_scan[0] = now
                     frac = min(0.15 + n / 2000 * 0.13, 0.28)
                     self.after(0, lambda c=n, f=frac: self._set_status(
                         f"Discovering files… ({c} found)", f))
@@ -674,12 +685,23 @@ class App(tk.Tk):
             entries = scanner.scan(self._scan_folder,
                                    recursive=self._recursive_var.get(),
                                    progress_cb=_scan_cb)
-            self.after(0, lambda: self._set_status(f"Health-checking {len(entries)} files…", 0.3))
-            health.check_all(entries)
+
+            # Phase 2 — health   30%→48%
+            self.after(0, lambda: self._set_status(
+                f"Health-checking {len(entries)} files…", 0.3))
+            health.check_all(entries,
+                             progress_cb=_throttled_cb("Health-checking", 0.30, 0.48))
+
+            # Phase 3 — quality  50%→63%
             self.after(0, lambda: self._set_status("Scoring quality…", 0.5))
-            qmod.score_all(entries)
+            qmod.score_all(entries,
+                           progress_cb=_throttled_cb("Scoring quality", 0.50, 0.63))
+
+            # Phase 4 — dupes   65%→78%
             self.after(0, lambda: self._set_status("Finding duplicates…", 0.65))
             dup_groups = duplicates.find_duplicates(entries)
+
+            # Phase 5 — events  80%→100%
             self.after(0, lambda: self._set_status("Grouping events…", 0.8))
             ev_groups = events.group_by_events(entries)
             self.after(0, lambda: self._finish_scan(entries, dup_groups, ev_groups))
