@@ -48,6 +48,9 @@ def _style(root: tk.Tk):
     s.map("Accent.TButton", background=[("active", "#c73652")])
     s.configure("TScrollbar", background=BG2, troughcolor=BG,
                  arrowcolor=FG2, borderwidth=0)
+    s.configure("Scan.Horizontal.TProgressbar",
+                 troughcolor=BG3, background=ACCENT,
+                 thickness=14, borderwidth=0)
     s.configure("TCombobox", fieldbackground=BG2, background=BG2,
                  selectbackground=BG3, foreground=FG, arrowcolor=FG2)
     s.map("TCombobox", fieldbackground=[("readonly", BG2)])
@@ -595,18 +598,26 @@ class App(tk.Tk):
         self._watch_status.pack(anchor="w", padx=12)
 
     def _build_status(self):
-        sb = tk.Frame(self, bg=BG2, height=24)
+        sb = tk.Frame(self, bg=BG2, height=36)
         sb.pack(fill="x", side="bottom")
         sb.pack_propagate(False)
         self._status_label = tk.Label(sb, text="Ready", bg=BG2, fg=FG2,
                                        font=("Segoe UI", 9))
         self._status_label.pack(side="left", padx=8)
-        self._progress = ttk.Progressbar(sb, length=180, mode="determinate")
-        self._progress.pack(side="right", padx=8, pady=3)
+        self._pct_label = tk.Label(sb, text="", bg=BG2, fg=ACCENT,
+                                    font=("Segoe UI", 9, "bold"), width=5)
+        self._pct_label.pack(side="right", padx=(0, 4))
+        self._progress = ttk.Progressbar(sb, length=320, mode="determinate",
+                                          style="Scan.Horizontal.TProgressbar")
+        self._progress.pack(side="right", padx=(8, 2), pady=7)
 
     def _set_status(self, msg: str, progress: float = 0.0):
         self._status_label.configure(text=msg)
         self._progress["value"] = progress * 100
+        if progress > 0.0:
+            self._pct_label.configure(text=f"{progress:.0%}")
+        else:
+            self._pct_label.configure(text="")
 
     def _browse(self):
         folder = filedialog.askdirectory(title="Select folder to scan")
