@@ -97,19 +97,23 @@ def _compute_video_phash(entry: "FileEntry") -> Optional[str]:
 def find_duplicates(
     entries: list["FileEntry"],
     phash_threshold: int = 10,
+    progress_cb=None,
 ) -> list[DuplicateGroup]:
     """Return duplicate groups. Mutates entry.md5 and entry.phash as a side effect."""
     from .scanner import compute_md5
 
     groups: list[DuplicateGroup] = []
     gid = 0
+    total = len(entries)
 
     # --- Exact duplicates by MD5 ---
     md5_buckets: dict[str, list["FileEntry"]] = defaultdict(list)
-    for e in entries:
+    for i, e in enumerate(entries):
         compute_md5(e)
         if e.md5:
             md5_buckets[e.md5].append(e)
+        if progress_cb:
+            progress_cb(i + 1, total)
 
     exact_paths: set[Path] = set()
     for md5, dupes in md5_buckets.items():
