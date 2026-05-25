@@ -727,27 +727,36 @@ class App(tk.Tk):
     def _populate_dupes(self, groups):
         self._dupe_tree.delete(*self._dupe_tree.get_children())
         for group in groups:
-            for entry, match_type in group:
+            for entry in group.entries:
                 self._dupe_tree.insert("", "end",
                                         values=(entry.path.name,
                                                 _human(entry.size_bytes),
-                                                match_type))
+                                                group.kind))
 
     def _populate_events(self, groups):
         self._ev_tree.delete(*self._ev_tree.get_children())
-        for name, entries in groups:
-            dates = [e.date for e in entries if e.date]
-            start = min(dates).strftime("%Y-%m-%d") if dates else ""
-            end   = max(dates).strftime("%Y-%m-%d") if dates else ""
+        for group in groups:
+            start = group.start.strftime("%Y-%m-%d") if group.start else ""
+            end   = group.end.strftime("%Y-%m-%d") if group.end else ""
             self._ev_tree.insert("", "end",
-                                  values=(name, len(entries), start, end))
+                                  values=(group.display_name, len(group.entries), start, end))
 
     def _populate_storage(self, entries):
         from . import reporter
-        report = reporter.storage_report(entries)
+        data = reporter.storage_report(entries)
+        lines = [
+            f"Total:  {data['total_human']}  ({data['total_files']} files)",
+            "",
+            "By type:",
+        ]
+        for ftype, info in data["by_type"].items():
+            lines.append(f"  {ftype:10s}  {info['human']:>10s}  ({info['count']} files)")
+        lines += ["", "Top 10 largest:"]
+        for item in data["top10_largest"]:
+            lines.append(f"  {item['human']:>10s}  {item['path']}")
         self._storage_text.configure(state="normal")
         self._storage_text.delete("1.0", "end")
-        self._storage_text.insert("1.0", report)
+        self._storage_text.insert("1.0", "\n".join(lines))
         self._storage_text.configure(state="disabled")
 
     def _on_select(self, _event=None):
@@ -1588,8 +1597,9 @@ class App(tk.Tk):
 
     def _launch_dupe_finder(self):
         try:
-            from .dupe_finder import App as DupeApp
-            DupeApp().mainloop()
+            import subprocess, sys
+            script = Path(__file__).parent / "dupe_finder.py"
+            subprocess.Popen([sys.executable, str(script)])
         except Exception as e:
             messagebox.showerror("Dupe Finder", str(e))
 
