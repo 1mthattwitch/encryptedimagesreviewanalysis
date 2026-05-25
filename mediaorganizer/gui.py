@@ -1589,8 +1589,7 @@ class App(tk.Tk):
     def _launch_dupe_finder(self):
         try:
             from .dupe_finder import App as DupeApp
-            win = tk.Toplevel(self)
-            DupeApp(win)
+            DupeApp().mainloop()
         except Exception as e:
             messagebox.showerror("Dupe Finder", str(e))
 
