@@ -657,10 +657,23 @@ class App(tk.Tk):
         self._scan_btn.configure(state="disabled")
 
         def _work():
+            import time
             from . import scanner, health, duplicates, quality as qmod, events
             self.after(0, lambda: self._set_status("Discovering files…", 0.15))
+
+            _last_ui = [0.0]
+            def _scan_cb(n, name):
+                now = time.monotonic()
+                if now - _last_ui[0] >= 0.25:
+                    _last_ui[0] = now
+                    # Animate bar from 15 % → 28 % while scanning (exact total unknown)
+                    frac = min(0.15 + n / 2000 * 0.13, 0.28)
+                    self.after(0, lambda c=n, f=frac: self._set_status(
+                        f"Discovering files… ({c} found)", f))
+
             entries = scanner.scan(self._scan_folder,
-                                   recursive=self._recursive_var.get())
+                                   recursive=self._recursive_var.get(),
+                                   progress_cb=_scan_cb)
             self.after(0, lambda: self._set_status(f"Health-checking {len(entries)} files…", 0.3))
             health.check_all(entries)
             self.after(0, lambda: self._set_status("Scoring quality…", 0.5))
@@ -735,27 +748,36 @@ class App(tk.Tk):
     def _populate_dupes(self, groups):
         self._dupe_tree.delete(*self._dupe_tree.get_children())
         for group in groups:
-            for entry, match_type in group:
+            for entry in group.entries:
                 self._dupe_tree.insert("", "end",
                                         values=(entry.path.name,
                                                 _human(entry.size_bytes),
-                                                match_type))
+                                                group.kind))
 
     def _populate_events(self, groups):
         self._ev_tree.delete(*self._ev_tree.get_children())
-        for name, entries in groups:
-            dates = [e.date for e in entries if e.date]
-            start = min(dates).strftime("%Y-%m-%d") if dates else ""
-            end   = max(dates).strftime("%Y-%m-%d") if dates else ""
+        for group in groups:
+            start = group.start.strftime("%Y-%m-%d") if group.start else ""
+            end   = group.end.strftime("%Y-%m-%d") if group.end else ""
             self._ev_tree.insert("", "end",
-                                  values=(name, len(entries), start, end))
+                                  values=(group.display_name, len(group.entries), start, end))
 
     def _populate_storage(self, entries):
         from . import reporter
-        report = reporter.storage_report(entries)
+        data = reporter.storage_report(entries)
+        lines = [
+            f"Total:  {data['total_human']}  ({data['total_files']} files)",
+            "",
+            "By type:",
+        ]
+        for ftype, info in data["by_type"].items():
+            lines.append(f"  {ftype:10s}  {info['human']:>10s}  ({info['count']} files)")
+        lines += ["", "Top 10 largest:"]
+        for item in data["top10_largest"]:
+            lines.append(f"  {item['human']:>10s}  {item['path']}")
         self._storage_text.configure(state="normal")
         self._storage_text.delete("1.0", "end")
-        self._storage_text.insert("1.0", report)
+        self._storage_text.insert("1.0", "\n".join(lines))
         self._storage_text.configure(state="disabled")
 
     def _on_select(self, _event=None):
@@ -1596,9 +1618,9 @@ class App(tk.Tk):
 
     def _launch_dupe_finder(self):
         try:
-            from .dupe_finder import App as DupeApp
-            win = tk.Toplevel(self)
-            DupeApp(win)
+            import subprocess, sys
+            script = Path(__file__).parent / "dupe_finder.py"
+            subprocess.Popen([sys.executable, str(script)])
         except Exception as e:
             messagebox.showerror("Dupe Finder", str(e))
 
