@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 import struct
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -199,7 +200,7 @@ def _image_dims(path: Path) -> tuple[Optional[int], Optional[int]]:
         return None, None
 
 
-def _video_meta(path: Path) -> tuple[Optional[int], Optional[int], Optional[float], Optional[float]]:
+def _video_meta_inner(path: Path) -> tuple[Optional[int], Optional[int], Optional[float], Optional[float]]:
     try:
         import cv2
         from mediaorganizer import _quiet_stderr
@@ -216,6 +217,18 @@ def _video_meta(path: Path) -> tuple[Optional[int], Optional[int], Optional[floa
         return w or None, h or None, duration, fps or None
     except Exception:
         return None, None, None, None
+
+
+def _video_meta(path: Path) -> tuple[Optional[int], Optional[int], Optional[float], Optional[float]]:
+    """Run _video_meta_inner in a thread with a 10-second timeout.
+    Corrupted videos (moov atom missing etc.) can hang OpenCV indefinitely."""
+    result: list = [None, None, None, None]
+    def _target():
+        result[:] = list(_video_meta_inner(path))
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(10)
+    return tuple(result)  # type: ignore[return-value]
 
 
 def _mtime(path: Path) -> Optional[datetime]:
